@@ -32,6 +32,12 @@ from utils.auth import (
     require_login,
     render_user_info,
 )
+from utils.auth import get_current_user
+
+from utils.sheets_api import (
+    save_formative_result as save_formative_result_to_sheets,
+    load_formative_results,
+)
 
 # =========================================================
 # 페이지 설정
@@ -48,7 +54,47 @@ require_login()
 # =========================================================
 # Helper Functions
 # =========================================================
+user = get_current_user()
 
+if user:
+
+    user_id = user.get(
+        "sub",
+        "",
+    )
+
+    if st.button(
+        "🧪 형성평가 저장 테스트"
+    ):
+        result = (
+            save_formative_result_to_sheets(
+                user_id=user_id,
+                section_id="1-1",
+                score=80,
+                correct=4,
+                total=5,
+            )
+        )
+
+        st.write(
+            "형성평가 저장 결과:",
+            result,
+        )
+
+    if st.button(
+        "🧪 형성평가 불러오기 테스트"
+    ):
+        result = (
+            load_formative_results(
+                user_id
+            )
+        )
+
+        st.write(
+            "형성평가 불러오기 결과:",
+            result,
+        )
+        
 def progress_status(
     progress: float,
 ) -> str:

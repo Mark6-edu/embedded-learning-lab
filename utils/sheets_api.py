@@ -190,3 +190,88 @@ def load_progress(
         return {}
 
     return progress
+
+# =========================================================
+# 형성평가 결과 저장
+# =========================================================
+
+def save_formative_result(
+    user_id: str,
+    section_id: str,
+    score: int,
+    correct: int,
+    total: int,
+) -> dict[str, Any]:
+    """
+    학생의 형성평가 결과를 Google Sheets에 저장합니다.
+
+    attempt_no는 Apps Script에서
+    기존 기록을 기준으로 자동 계산합니다.
+    """
+
+    return post_to_sheets(
+        action="save_formative_result",
+        payload={
+            "user_id": user_id,
+            "section_id": section_id,
+            "score": score,
+            "correct": correct,
+            "total": total,
+        },
+    )
+
+
+# =========================================================
+# 형성평가 결과 불러오기
+# =========================================================
+
+def load_formative_results(
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """
+    학생의 전체 형성평가 응시 이력을
+    Google Sheets에서 불러옵니다.
+
+    반환 예:
+    [
+        {
+            "result_id": "...",
+            "section_id": "1-1",
+            "attempt_no": 1,
+            "score": 80,
+            "correct": 4,
+            "total": 5,
+            "submitted_at": "2026-08-16 23:10:00",
+        }
+    ]
+    """
+
+    result = post_to_sheets(
+        action="get_formative_results",
+        payload={
+            "user_id": user_id,
+        },
+    )
+
+    if not result.get("success"):
+        return []
+
+    results = result.get(
+        "results",
+        [],
+    )
+
+    if not isinstance(
+        results,
+        list,
+    ):
+        return []
+
+    return [
+        item
+        for item in results
+        if isinstance(
+            item,
+            dict,
+        )
+    ]
