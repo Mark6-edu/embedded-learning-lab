@@ -133,3 +133,60 @@ def register_student(
             "name": name,
         },
     )
+
+# =========================================================
+# 진도 저장
+# =========================================================
+
+def save_progress(
+    user_id: str,
+    section_id: str,
+    completed: bool = True,
+) -> dict[str, Any]:
+    """
+    학생의 소단원 진도를 Google Sheets에 저장합니다.
+    """
+
+    return post_to_sheets(
+        action="save_progress",
+        payload={
+            "user_id": user_id,
+            "section_id": section_id,
+            "completed": completed,
+        },
+    )
+
+
+# =========================================================
+# 진도 불러오기
+# =========================================================
+
+def load_progress(
+    user_id: str,
+) -> dict[str, Any]:
+    """
+    학생의 전체 소단원 진도를 Google Sheets에서 불러옵니다.
+    """
+
+    result = post_to_sheets(
+        action="get_progress",
+        payload={
+            "user_id": user_id,
+        },
+    )
+
+    if not result.get("success"):
+        return {}
+
+    progress = result.get(
+        "progress",
+        {},
+    )
+
+    if not isinstance(
+        progress,
+        dict,
+    ):
+        return {}
+
+    return progress

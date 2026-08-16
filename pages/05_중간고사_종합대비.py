@@ -34,6 +34,11 @@ from utils.auth import (
     render_user_info,
 )
 
+from utils.sheets_api import (
+    save_progress,
+    load_progress,
+)
+
 from utils.sheets_api import register_student
 
 # =========================================================
@@ -49,6 +54,41 @@ st.set_page_config(
 load_global_css()
 
 require_login()
+
+user = get_current_user()
+
+if user:
+
+    user_id = user.get(
+        "sub",
+        "",
+    )
+
+    if st.button(
+        "🧪 진도 저장 테스트",
+    ):
+        result = save_progress(
+            user_id=user_id,
+            section_id="1-1",
+            completed=True,
+        )
+
+        st.write(
+            "저장 결과:",
+            result,
+        )
+
+    if st.button(
+        "🧪 진도 불러오기 테스트",
+    ):
+        result = load_progress(
+            user_id
+        )
+
+        st.write(
+            "불러오기 결과:",
+            result,
+        )
 
 user = get_current_user()
 
