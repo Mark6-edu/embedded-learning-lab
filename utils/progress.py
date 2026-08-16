@@ -4,6 +4,16 @@ from typing import Any
 
 import streamlit as st
 
+from utils.auth import (
+    get_user_id,
+    is_logged_in,
+)
+
+from utils.sheets_api import (
+    load_progress as load_progress_from_sheets,
+    save_progress as save_progress_to_sheets,
+)
+
 
 # =========================================================
 # 학습 구조
@@ -55,6 +65,14 @@ SECTION_NAMES = {
 
 PROGRESS_STATE_KEY = "learning_progress"
 
+REMOTE_PROGRESS_USER_KEY = (
+    "learning_progress_remote_user_id"
+)
+
+REMOTE_PROGRESS_SYNCED_KEY = (
+    "learning_progress_remote_synced"
+)
+
 
 # =========================================================
 # 기본 데이터 생성
@@ -100,6 +118,132 @@ def _create_default_progress() -> dict[str, dict[str, Any]]:
 
 
 # =========================================================
+# Google Sheets 진도 동기화
+# =========================================================
+
+def _load_remote_progress_once() -> None:
+    """
+    로그인한 사용자의 Google Sheets 진도를
+    현재 Session State에 최초 1회 병합한다.
+
+    - 비로그인 상태에서는 아무 작업도 하지 않는다.
+    - 동일 사용자에 대해서는 세션당 한 번만 불러온다.
+    - API 오류가 발생해도 앱 실행은 계속된다.
+    """
+
+    if not is_logged_in():
+        return
+
+    user_id = get_user_id()
+
+    if not user_id:
+        return
+
+    synced_user_id = st.session_state.get(
+        REMOTE_PROGRESS_USER_KEY,
+        "",
+    )
+
+    is_synced = bool(
+        st.session_state.get(
+            REMOTE_PROGRESS_SYNCED_KEY,
+            False,
+        )
+    )
+
+    if (
+        synced_user_id == user_id
+        and is_synced
+    ):
+        return
+
+    # 같은 실행 중 중복 호출 방지
+    st.session_state[
+        REMOTE_PROGRESS_USER_KEY
+    ] = user_id
+
+    st.session_state[
+        REMOTE_PROGRESS_SYNCED_KEY
+    ] = True
+
+    try:
+        remote_progress = (
+            load_progress_from_sheets(
+                user_id
+            )
+        )
+
+    except Exception:
+        return
+
+    if not isinstance(
+        remote_progress,
+        dict,
+    ):
+        return
+
+    progress = st.session_state[
+        PROGRESS_STATE_KEY
+    ]
+
+    for (
+        section_id,
+        remote_data,
+    ) in remote_progress.items():
+
+        if section_id not in progress:
+            continue
+
+        if not isinstance(
+            remote_data,
+            dict,
+        ):
+            continue
+
+        progress[
+            section_id
+        ][
+            "completed"
+        ] = bool(
+            remote_data.get(
+                "completed",
+                False,
+            )
+        )
+
+
+def _save_remote_progress(
+    section_id: str,
+    completed: bool,
+) -> None:
+    """
+    로그인한 사용자의 특정 소단원 진도를
+    Google Sheets에 저장한다.
+
+    API 오류가 발생하더라도
+    Session State 기반 학습 기능은 유지한다.
+    """
+
+    if not is_logged_in():
+        return
+
+    user_id = get_user_id()
+
+    if not user_id:
+        return
+
+    try:
+        save_progress_to_sheets(
+            user_id=user_id,
+            section_id=section_id,
+            completed=completed,
+        )
+
+    except Exception:
+        pass
+
+
+# =========================================================
 # 초기화 및 기존 데이터 마이그레이션
 # =========================================================
 
@@ -109,6 +253,9 @@ def initialize_progress() -> None:
 
     기존 버전의 progress 데이터가 이미 존재하는 경우에도
     새롭게 추가된 history 필드 등을 자동으로 보완한다.
+
+    로그인한 사용자의 경우 Google Sheets 진도를
+    최초 1회 불러와 현재 Session State와 동기화한다.
     """
 
     if PROGRESS_STATE_KEY not in st.session_state:
@@ -116,8 +263,6 @@ def initialize_progress() -> None:
         st.session_state[
             PROGRESS_STATE_KEY
         ] = _create_default_progress()
-
-        return
 
     progress = st.session_state[
         PROGRESS_STATE_KEY
@@ -157,7 +302,6 @@ def initialize_progress() -> None:
 
                 if key not in section:
 
-                    # 리스트는 새로운 객체로 생성
                     if isinstance(
                         value,
                         list,
@@ -172,6 +316,12 @@ def initialize_progress() -> None:
                         section[
                             key
                         ] = value
+
+    # -----------------------------------------------------
+    # 로그인 사용자 원격 진도 불러오기
+    # -----------------------------------------------------
+
+    _load_remote_progress_once()
 
 
 # =========================================================
@@ -230,6 +380,8 @@ def complete_section(
 ) -> None:
     """
     특정 소단원을 완료 상태로 변경한다.
+
+    로그인 사용자라면 Google Sheets에도 저장한다.
     """
 
     section = get_section_progress(
@@ -239,6 +391,11 @@ def complete_section(
     section[
         "completed"
     ] = True
+
+    _save_remote_progress(
+        section_id=section_id,
+        completed=True,
+    )
 
 
 # =========================================================
@@ -250,6 +407,8 @@ def uncomplete_section(
 ) -> None:
     """
     특정 소단원의 완료 상태를 해제한다.
+
+    로그인 사용자라면 Google Sheets에도 저장한다.
     """
 
     section = get_section_progress(
@@ -259,6 +418,11 @@ def uncomplete_section(
     section[
         "completed"
     ] = False
+
+    _save_remote_progress(
+        section_id=section_id,
+        completed=False,
+    )
 
 
 # =========================================================
@@ -280,6 +444,9 @@ def save_formative_result(
     - 응시 횟수
     - 전체 점수 이력
     - 소단원 완료 상태
+
+    로그인 사용자라면 완료 상태를
+    Google Sheets progress 시트에도 저장한다.
     """
 
     section = get_section_progress(
@@ -298,7 +465,6 @@ def save_formative_result(
             * 100
         )
 
-
     # -----------------------------------------------------
     # 응시 횟수 증가
     # -----------------------------------------------------
@@ -310,7 +476,6 @@ def save_formative_result(
     current_attempt = section[
         "attempt_count"
     ]
-
 
     # -----------------------------------------------------
     # 최근 결과 갱신
@@ -328,7 +493,6 @@ def save_formative_result(
         "formative_total"
     ] = total_count
 
-
     # -----------------------------------------------------
     # 전체 이력 추가
     # -----------------------------------------------------
@@ -344,7 +508,6 @@ def save_formative_result(
         }
     )
 
-
     # -----------------------------------------------------
     # 학습 완료 처리
     # -----------------------------------------------------
@@ -352,6 +515,15 @@ def save_formative_result(
     section[
         "completed"
     ] = True
+
+    # -----------------------------------------------------
+    # Google Sheets 진도 저장
+    # -----------------------------------------------------
+
+    _save_remote_progress(
+        section_id=section_id,
+        completed=True,
+    )
 
 
 # =========================================================
@@ -363,22 +535,6 @@ def get_formative_history(
 ) -> list[dict[str, Any]]:
     """
     특정 소단원의 형성평가 전체 이력을 반환한다.
-
-    예:
-        [
-            {
-                "attempt": 1,
-                "score": 67,
-                "correct": 8,
-                "total": 12,
-            },
-            {
-                "attempt": 2,
-                "score": 83,
-                "correct": 10,
-                "total": 12,
-            },
-        ]
     """
 
     section = get_section_progress(
@@ -408,7 +564,6 @@ def get_best_formative_score(
     )
 
     if not history:
-
         return None
 
     return max(
@@ -436,7 +591,6 @@ def get_first_formative_score(
     )
 
     if not history:
-
         return None
 
     return history[
@@ -455,12 +609,6 @@ def get_formative_improvement(
 ) -> int | None:
     """
     최초 점수와 최근 점수의 차이를 반환한다.
-
-    예:
-        최초 65점
-        최근 90점
-
-        → +25
     """
 
     history = get_formative_history(
@@ -468,7 +616,6 @@ def get_formative_improvement(
     )
 
     if len(history) < 2:
-
         return None
 
     first_score = history[
@@ -645,7 +792,7 @@ def get_completed_section_count() -> int:
 
 def get_total_section_count() -> int:
     """
-    전체 소단원 개수를 반환한다.
+    전체 소단원의 개수를 반환한다.
     """
 
     return len(
@@ -783,12 +930,6 @@ def get_all_attempt_average() -> float | None:
     """
     모든 형성평가 응시 이력을 기준으로
     전체 평균 점수를 계산한다.
-
-    예:
-        1-1: 60, 80
-        1-2: 90
-
-        전체 응시 평균 = 76.7
     """
 
     progress = get_all_progress()
@@ -881,7 +1022,11 @@ def get_most_retried_section() -> dict[str, Any] | None:
 
 def reset_progress() -> None:
     """
-    모든 학습 진도와 형성평가 기록을 초기화한다.
+    현재 Session State의 학습 진도와
+    형성평가 기록을 초기화한다.
+
+    현재 단계에서는 Google Sheets의 원격 진도는
+    삭제하지 않는다.
     """
 
     st.session_state[
