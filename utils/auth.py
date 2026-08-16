@@ -158,7 +158,7 @@ def login() -> None:
     Google OIDC 로그인 화면으로 이동합니다.
     """
 
-    st.login("google")
+    st.login()
 
 
 def logout() -> None:
