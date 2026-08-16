@@ -145,6 +145,12 @@ st.sidebar.page_link(
     label="📊 학습 대시보드",
 )
 
+# 임시 테스트
+st.sidebar.page_link(
+    "pages/00_로그인_테스트.py",
+    label="🔐 로그인 테스트",
+)
+
 st.sidebar.divider()
 
 st.sidebar.caption(
