@@ -93,11 +93,6 @@ if "dashboard_wrong_answers" not in st.session_state:
         "dashboard_wrong_answers"
     ] = []
 
-if "dashboard_remote_loaded_user" not in st.session_state:
-    st.session_state[
-        "dashboard_remote_loaded_user"
-    ] = ""
-
 
 # =========================================================
 # HTML Helper
@@ -294,70 +289,48 @@ def get_growth_message(
 # =========================================================
 
 def load_dashboard_remote_data() -> None:
+    """
+    Google Sheets에서 중간고사 결과와
+    누적 오답을 항상 최신 상태로 불러옵니다.
+    """
 
     if not CURRENT_USER_ID:
         return
 
-    loaded_user = str(
-        st.session_state.get(
-            "dashboard_remote_loaded_user",
-            "",
-        )
-    )
-
-    if loaded_user == CURRENT_USER_ID:
-        return
-
     try:
 
-        midterm_results = (
-            load_midterm_results(
-                CURRENT_USER_ID
-            )
+        midterm_results = load_midterm_results(
+            CURRENT_USER_ID
         )
 
-    except Exception:
+        if isinstance(
+            midterm_results,
+            list,
+        ):
+            st.session_state[
+                "dashboard_midterm_results"
+            ] = midterm_results
 
-        midterm_results = []
+    except Exception:
+        pass
 
 
     try:
 
-        wrong_answers = (
-            load_wrong_answers(
-                CURRENT_USER_ID
-            )
+        wrong_answers = load_wrong_answers(
+            CURRENT_USER_ID
         )
 
+        if isinstance(
+            wrong_answers,
+            list,
+        ):
+            st.session_state[
+                "dashboard_wrong_answers"
+            ] = wrong_answers
+
     except Exception:
-
-        wrong_answers = []
-
-
-    if isinstance(
-        midterm_results,
-        list,
-    ):
-
-        st.session_state[
-            "dashboard_midterm_results"
-        ] = midterm_results
-
-
-    if isinstance(
-        wrong_answers,
-        list,
-    ):
-
-        st.session_state[
-            "dashboard_wrong_answers"
-        ] = wrong_answers
-
-
-    st.session_state[
-        "dashboard_remote_loaded_user"
-    ] = CURRENT_USER_ID
-
+        pass
 
 load_dashboard_remote_data()
 
