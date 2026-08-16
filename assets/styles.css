@@ -279,14 +279,20 @@ div[data-testid="stProgress"] {
     margin-top: 0.15rem;
 }
 
+
+/* 미진행 영역 */
 div[data-testid="stProgress"] > div {
     overflow: hidden;
 
-    background: #e5e8ef;
+    background:
+        #eef1f6 !important;
 
-    border-radius: 999px;
+    border-radius:
+        999px;
 }
 
+
+/* 진행 영역 */
 div[data-testid="stProgress"] > div > div {
     background:
         linear-gradient(
@@ -295,9 +301,9 @@ div[data-testid="stProgress"] > div > div {
             #818cf8
         ) !important;
 
-    border-radius: 999px;
+    border-radius:
+        999px;
 }
-
 
 /* =========================================================
    08. GENERIC BORDER CONTAINER
