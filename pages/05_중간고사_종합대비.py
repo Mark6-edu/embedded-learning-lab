@@ -30,8 +30,10 @@ from utils.ui import (
 
 from utils.auth import (
     require_login,
-    render_user_info,
+    get_current_user,
 )
+
+from utils.sheets_api import register_student
 
 # =========================================================
 # 페이지 설정
@@ -47,7 +49,17 @@ load_global_css()
 
 require_login()
 
+user = get_current_user()
 
+if user:
+    register_result = register_student(
+        user_id=user.get("sub", ""),
+        email=user.get("email", ""),
+        name=user.get("name", ""),
+    )
+
+    st.write("학생 등록 테스트:", register_result)
+    
 # =========================================================
 # 상수
 # =========================================================
@@ -1210,7 +1222,7 @@ st.sidebar.divider()
 
 with st.sidebar:
     render_user_info()
-    
+
 st.sidebar.caption(
     "현재 학습 영역"
 )
