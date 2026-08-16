@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import streamlit as st
 
+from utils.auth import (
+    is_logged_in,
+    render_sidebar_auth,
+)
+
 from utils.progress import (
     get_completed_section_count,
     get_lesson_progress,
@@ -29,6 +34,13 @@ st.set_page_config(
 
 
 # =========================================================
+# 로그인 상태
+# =========================================================
+
+LOGGED_IN = is_logged_in()
+
+
+# =========================================================
 # Helper Functions
 # =========================================================
 
@@ -37,7 +49,13 @@ def get_section_icon(
 ) -> str:
     """
     소단원 완료 여부에 따라 아이콘을 반환한다.
+
+    비로그인 상태에서는 개인 진도와 혼동하지 않도록
+    미완료 아이콘만 표시한다.
     """
+
+    if not LOGGED_IN:
+        return "⬜"
 
     return (
         "✅"
@@ -51,8 +69,12 @@ def get_lesson_button_label(
     progress: float,
 ) -> str:
     """
-    진도율에 따라 학습 카드 버튼 문구를 변경한다.
+    로그인 상태와 진도율에 따라
+    학습 카드 버튼 문구를 변경한다.
     """
+
+    if not LOGGED_IN:
+        return f"학습 {lesson_id} 시작하기"
 
     if progress >= 100:
         return f"학습 {lesson_id} 다시 보기"
@@ -82,16 +104,34 @@ def format_overall_progress(
 # =========================================================
 # 학습 진도 데이터
 # =========================================================
+#
+# 로그인 상태에서만 개인 진도를 의미 있게 사용한다.
+# 비로그인 상태에서는 학습 카드 구성을 위해 0으로 처리한다.
+# =========================================================
 
-lesson_1_progress = get_lesson_progress("1")
-lesson_2_progress = get_lesson_progress("2")
-lesson_3_progress = get_lesson_progress("3")
-lesson_4_progress = get_lesson_progress("4")
+if LOGGED_IN:
 
-overall_progress = get_overall_progress()
+    lesson_1_progress = get_lesson_progress("1")
+    lesson_2_progress = get_lesson_progress("2")
+    lesson_3_progress = get_lesson_progress("3")
+    lesson_4_progress = get_lesson_progress("4")
 
-completed_sections = get_completed_section_count()
-total_sections = get_total_section_count()
+    overall_progress = get_overall_progress()
+
+    completed_sections = get_completed_section_count()
+    total_sections = get_total_section_count()
+
+else:
+
+    lesson_1_progress = 0.0
+    lesson_2_progress = 0.0
+    lesson_3_progress = 0.0
+    lesson_4_progress = 0.0
+
+    overall_progress = 0.0
+
+    completed_sections = 0
+    total_sections = get_total_section_count()
 
 
 # =========================================================
@@ -135,17 +175,51 @@ st.sidebar.page_link(
     label="🔗 학습 4 · 인터페이스 구현",
 )
 
-st.sidebar.page_link(
-    "pages/05_중간고사_종합대비.py",
-    label="🎯 중간고사 종합 대비",
-)
 
-st.sidebar.page_link(
-    "pages/06_학습대시보드.py",
-    label="📊 학습 대시보드",
-)
+# ---------------------------------------------------------
+# 로그인 여부에 따라 개인화 메뉴 표시
+# ---------------------------------------------------------
 
-st.sidebar.divider()
+if LOGGED_IN:
+
+    st.sidebar.page_link(
+        "pages/05_중간고사_종합대비.py",
+        label="🎯 중간고사 종합 대비",
+    )
+
+    st.sidebar.page_link(
+        "pages/06_학습대시보드.py",
+        label="📊 학습 대시보드",
+    )
+
+else:
+
+    st.sidebar.page_link(
+        "pages/05_중간고사_종합대비.py",
+        label="🔒 중간고사 종합 대비",
+    )
+
+    st.sidebar.page_link(
+        "pages/06_학습대시보드.py",
+        label="🔒 학습 대시보드",
+    )
+
+
+# =========================================================
+# 로그인 / 로그아웃 영역
+# =========================================================
+#
+# 메뉴와 현재 학습 단계 사이에 표시된다.
+# =========================================================
+
+with st.sidebar:
+
+    render_sidebar_auth()
+
+
+# =========================================================
+# 현재 학습 단계
+# =========================================================
 
 st.sidebar.caption(
     "현재 학습 단계"
@@ -203,60 +277,123 @@ st.markdown(
     "## 📊 나의 학습 진행 상황"
 )
 
-progress_col1, progress_col2, progress_col3 = st.columns(
-    [4, 1.3, 1.3]
-)
 
-with progress_col1:
+# ---------------------------------------------------------
+# 로그인 상태
+# ---------------------------------------------------------
 
-    st.caption(
-        "전체 학습 진도"
+if LOGGED_IN:
+
+    progress_col1, progress_col2, progress_col3 = st.columns(
+        [4, 1.3, 1.3]
     )
 
-    render_progress_bar(
-        overall_progress,
-        show_label=False,
-    )
 
-    st.caption(
-        f"총 {total_sections}개 소단원 중 "
-        f"{completed_sections}개 완료"
-    )
+    with progress_col1:
 
-with progress_col2:
+        st.caption(
+            "전체 학습 진도"
+        )
 
-    st.metric(
-        "전체 진도",
-        format_overall_progress(
-            overall_progress
-        ),
-    )
+        render_progress_bar(
+            overall_progress,
+            show_label=False,
+        )
 
-with progress_col3:
+        st.caption(
+            f"총 {total_sections}개 소단원 중 "
+            f"{completed_sections}개 완료"
+        )
 
-    st.metric(
-        "완료 소단원",
-        f"{completed_sections} / {total_sections}",
-    )
+
+    with progress_col2:
+
+        st.metric(
+            "전체 진도",
+            format_overall_progress(
+                overall_progress
+            ),
+        )
+
+
+    with progress_col3:
+
+        st.metric(
+            "완료 소단원",
+            f"{completed_sections} / {total_sections}",
+        )
+
+
+    # -----------------------------------------------------
+    # 전체 완료 안내
+    # -----------------------------------------------------
+
+    if completed_sections == total_sections:
+
+        st.success(
+            "🎉 모든 학습 영역을 완료했습니다! "
+            "이제 중간고사 종합 대비와 "
+            "Arduino 프로젝트에 집중해보세요."
+        )
+
+    elif completed_sections > 0:
+
+        st.info(
+            f"현재까지 {completed_sections}개의 "
+            "소단원을 완료했습니다. "
+            "완료하지 않은 학습을 이어서 진행해보세요."
+        )
+
+    else:
+
+        st.info(
+            "🌱 아직 완료한 소단원이 없습니다. "
+            "학습 1부터 차근차근 시작해보세요."
+        )
 
 
 # ---------------------------------------------------------
-# 전체 완료 안내
+# 비로그인 상태
 # ---------------------------------------------------------
 
-if completed_sections == total_sections:
+else:
 
-    st.success(
-        "🎉 모든 학습 영역을 완료했습니다! "
-        "이제 중간고사 종합 대비와 Arduino 프로젝트에 집중해보세요."
-    )
+    with st.container(
+        border=True
+    ):
 
-elif completed_sections > 0:
+        st.markdown(
+            "### 🔐 Google 로그인 후 나의 학습 기록을 확인할 수 있습니다."
+        )
 
-    st.info(
-        f"현재까지 {completed_sections}개의 소단원을 완료했습니다. "
-        "완료하지 않은 학습을 이어서 진행해보세요."
-    )
+        st.write(
+            "학습 1~4의 콘텐츠는 로그인 없이 자유롭게 이용할 수 있습니다. "
+            "Google 계정으로 로그인하면 개인 학습 기록을 저장하고 "
+            "다른 기기에서도 이어서 학습할 수 있습니다."
+        )
+
+        st.info(
+            """
+            **로그인하면 다음 기능을 사용할 수 있습니다.**
+
+            📊 학습 진도율 저장  
+            📝 형성평가 결과 누적  
+            🎯 중간고사 종합 대비  
+            📈 개인 학습 대시보드  
+            💾 다른 기기에서 학습 기록 복원
+            """
+        )
+
+        if st.button(
+            "Google 계정으로 로그인",
+            key="home_google_login_button",
+            type="primary",
+            width="stretch",
+        ):
+
+            st.login(
+                "google"
+            )
 
 
 # =========================================================
@@ -270,7 +407,8 @@ st.markdown(
 )
 
 st.caption(
-    "NCS 학습모듈의 순서에 따라 총 4개의 학습 영역을 진행합니다."
+    "NCS 학습모듈의 순서에 따라 "
+    "총 4개의 학습 영역을 진행합니다."
 )
 
 
@@ -390,6 +528,7 @@ for index, item in enumerate(
         else right_col
     )
 
+
     with target_col:
 
         with st.container(
@@ -404,6 +543,7 @@ for index, item in enumerate(
                 [4, 1]
             )
 
+
             with title_col:
 
                 st.markdown(
@@ -411,12 +551,16 @@ for index, item in enumerate(
                     f"{item['title']}"
                 )
 
+
             with status_col:
 
-                if is_lesson_completed(
-                    item[
-                        "lesson_id"
-                    ]
+                if (
+                    LOGGED_IN
+                    and is_lesson_completed(
+                        item[
+                            "lesson_id"
+                        ]
+                    )
                 ):
 
                     st.success(
@@ -432,7 +576,7 @@ for index, item in enumerate(
 
 
             # -------------------------------------------------
-            # 소단원 완료 상태
+            # 소단원 상태
             # -------------------------------------------------
 
             for topic in item[
@@ -455,55 +599,69 @@ for index, item in enumerate(
 
 
             # -------------------------------------------------
-            # 현재 진도율
+            # 로그인 상태에서만 개인 진도 표시
             # -------------------------------------------------
 
-            st.caption(
-                f"현재 진도율 · "
-                f"{item['progress']:.0f}%"
-            )
-
-            render_progress_bar(
-                item[
-                    "progress"
-                ],
-                show_label=False,
-            )
-
-
-            # -------------------------------------------------
-            # 상태별 안내
-            # -------------------------------------------------
-
-            if item[
-                "progress"
-            ] >= 100:
-
-                st.success(
-                    f"🎉 {item['title']}의 "
-                    f"모든 소단원을 완료했습니다."
-                )
-
-            elif item[
-                "progress"
-            ] > 0:
-
-                remaining_count = sum(
-                    1
-                    for topic
-                    in item[
-                        "topics"
-                    ]
-                    if not is_section_completed(
-                        topic[
-                            "section_id"
-                        ]
-                    )
-                )
+            if LOGGED_IN:
 
                 st.caption(
-                    f"⏳ 남은 소단원 · "
-                    f"{remaining_count}개"
+                    f"현재 진도율 · "
+                    f"{item['progress']:.0f}%"
+                )
+
+                render_progress_bar(
+                    item[
+                        "progress"
+                    ],
+                    show_label=False,
+                )
+
+
+                # ---------------------------------------------
+                # 상태별 안내
+                # ---------------------------------------------
+
+                if item[
+                    "progress"
+                ] >= 100:
+
+                    st.success(
+                        f"🎉 {item['title']}의 "
+                        f"모든 소단원을 완료했습니다."
+                    )
+
+
+                elif item[
+                    "progress"
+                ] > 0:
+
+                    remaining_count = sum(
+                        1
+                        for topic
+                        in item[
+                            "topics"
+                        ]
+                        if not is_section_completed(
+                            topic[
+                                "section_id"
+                            ]
+                        )
+                    )
+
+                    st.caption(
+                        f"⏳ 남은 소단원 · "
+                        f"{remaining_count}개"
+                    )
+
+
+            # -------------------------------------------------
+            # 비로그인 안내
+            # -------------------------------------------------
+
+            else:
+
+                st.caption(
+                    "💡 로그인하면 소단원별 학습 진도가 저장됩니다."
                 )
 
 
@@ -541,6 +699,7 @@ exam_col1, exam_col2 = st.columns(
     [3, 1]
 )
 
+
 with exam_col1:
 
     st.write(
@@ -553,19 +712,44 @@ with exam_col1:
         "자동 채점 → 단원별 분석 → 오답 확인"
     )
 
+
+    if not LOGGED_IN:
+
+        st.info(
+            "🔐 중간고사 종합 대비와 개인 학습 대시보드는 "
+            "Google 로그인 후 사용할 수 있습니다."
+        )
+
+
 with exam_col2:
 
-    st.page_link(
-        "pages/05_중간고사_종합대비.py",
-        label="🎯 종합 모의고사 시작",
-        use_container_width=True,
-    )
+    if LOGGED_IN:
 
-    st.page_link(
-        "pages/06_학습대시보드.py",
-        label="📊 나의 학습 현황 보기",
-        use_container_width=True,
-    )
+        st.page_link(
+            "pages/05_중간고사_종합대비.py",
+            label="🎯 종합 모의고사 시작",
+            use_container_width=True,
+        )
+
+        st.page_link(
+            "pages/06_학습대시보드.py",
+            label="📊 나의 학습 현황 보기",
+            use_container_width=True,
+        )
+
+    else:
+
+        st.page_link(
+            "pages/05_중간고사_종합대비.py",
+            label="🔒 종합 모의고사",
+            use_container_width=True,
+        )
+
+        st.page_link(
+            "pages/06_학습대시보드.py",
+            label="🔒 학습 대시보드",
+            use_container_width=True,
+        )
 
 
 # =========================================================
@@ -579,8 +763,10 @@ st.markdown(
 )
 
 st.caption(
-    "모든 학습 영역은 가능한 한 동일한 학습 흐름으로 구성합니다."
+    "모든 학습 영역은 가능한 한 "
+    "동일한 학습 흐름으로 구성합니다."
 )
+
 
 flow_cols = st.columns(
     4
@@ -608,6 +794,7 @@ flow_items = [
         "배운 개념을 직접 적용",
     ),
 ]
+
 
 for col, (
     icon,
@@ -664,6 +851,7 @@ flow_items_2 = [
     ),
 ]
 
+
 for col, (
     icon,
     title,
@@ -705,6 +893,7 @@ st.markdown(
 guide_col1, guide_col2, guide_col3 = st.columns(
     3
 )
+
 
 with guide_col1:
 
