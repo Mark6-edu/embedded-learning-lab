@@ -23,18 +23,17 @@ from data.quizzes.quiz_4_2 import EXAM_PRACTICE_4_2
 
 from utils.auth import (
     get_current_user,
-    render_user_info,
     require_login,
 )
 
 from utils.sheets_api import (
     load_midterm_results,
+    post_to_sheets,
     register_student,
-    save_midterm_result,
-    save_wrong_answers,
 )
 
 from utils.theme import load_global_css
+from utils.navigation import render_app_sidebar
 
 from utils.ui import (
     render_breadcrumb,
@@ -53,6 +52,10 @@ st.set_page_config(
 )
 
 load_global_css()
+
+render_app_sidebar(
+    current_page="midterm"
+)
 
 require_login()
 
@@ -1232,6 +1235,64 @@ def clear_active_exam() -> None:
     ] = None
 
 
+
+# =========================================================
+# Google Sheets 저장 API 호환 Helper
+# =========================================================
+
+def save_midterm_result_remote(
+    user_id: str,
+    selected_units: list[str],
+    difficulties: list[str],
+    question_count: int,
+    score: int | float,
+    correct: int,
+    total: int,
+    wrong_count: int,
+) -> dict[str, Any]:
+    """
+    중간고사 결과를 Apps Script에 저장합니다.
+
+    기존 Code.gs의 save_midterm_result 액션 규격을 그대로 사용하여
+    utils.sheets_api의 함수 시그니처 변경 여부와 관계없이 동작합니다.
+    """
+
+    return post_to_sheets(
+        action="save_midterm_result",
+        payload={
+            "user_id": str(user_id).strip(),
+            "selected_units": selected_units,
+            "difficulties": difficulties,
+            "question_count": int(question_count),
+            "score": score,
+            "correct": int(correct),
+            "total": int(total),
+            "wrong_count": int(wrong_count),
+        },
+    )
+
+
+def save_wrong_answers_remote(
+    user_id: str,
+    source_id: str,
+    source_type: str,
+    answers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    누적 오답을 Apps Script의 save_wrong_answers 액션으로 저장합니다.
+    """
+
+    return post_to_sheets(
+        action="save_wrong_answers",
+        payload={
+            "user_id": str(user_id).strip(),
+            "source_id": str(source_id).strip(),
+            "source_type": str(source_type).strip(),
+            "answers": answers,
+        },
+    )
+
+
 # =========================================================
 # Google Sheets에 시험 저장
 # =========================================================
@@ -1279,7 +1340,7 @@ def save_exam_to_remote(
     try:
 
         midterm_response = (
-            save_midterm_result(
+            save_midterm_result_remote(
                 user_id=CURRENT_USER_ID,
 
                 selected_units=config.get(
@@ -1432,7 +1493,7 @@ def save_exam_to_remote(
 
         try:
 
-            save_wrong_answers(
+            save_wrong_answers_remote(
                 user_id=CURRENT_USER_ID,
                 source_id=exam_id,
                 source_type="midterm",
@@ -2085,74 +2146,6 @@ def weak_units(
 
 
     return result
-
-
-# =========================================================
-# Sidebar
-# =========================================================
-
-st.sidebar.title(
-    "🔧 임베디드 구현 LAB"
-)
-
-st.sidebar.caption(
-    "시스템 프로그래밍"
-)
-
-st.sidebar.markdown(
-    "### 학습 메뉴"
-)
-
-st.sidebar.page_link(
-    "streamlit_app.py",
-    label="🏠 홈",
-)
-
-st.sidebar.page_link(
-    "pages/01_학습1_기술명세.py",
-    label="📘 학습 1 · 기술 명세 검토",
-)
-
-st.sidebar.page_link(
-    "pages/02_학습2_개발환경.py",
-    label="🛠️ 학습 2 · 개발 환경 구축",
-)
-
-st.sidebar.page_link(
-    "pages/03_학습3_모듈구현.py",
-    label="💻 학습 3 · 모듈 구현",
-)
-
-st.sidebar.page_link(
-    "pages/04_학습4_인터페이스.py",
-    label="🔗 학습 4 · 인터페이스 구현",
-)
-
-st.sidebar.page_link(
-    "pages/05_중간고사_종합대비.py",
-    label="🎯 중간고사 종합 대비",
-)
-
-st.sidebar.page_link(
-    "pages/06_학습대시보드.py",
-    label="📊 학습 대시보드",
-)
-
-st.sidebar.divider()
-
-
-with st.sidebar:
-
-    render_user_info()
-
-
-st.sidebar.caption(
-    "현재 학습 영역"
-)
-
-st.sidebar.markdown(
-    "🎯 **중간고사 종합 대비**"
-)
 
 
 # =========================================================

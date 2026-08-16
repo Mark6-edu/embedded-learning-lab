@@ -9,7 +9,6 @@ import streamlit as st
 from utils.auth import (
     get_current_teacher,
     require_teacher,
-    render_sidebar_auth,
 )
 
 from utils.sheets_api import (
@@ -18,6 +17,10 @@ from utils.sheets_api import (
 
 from utils.theme import (
     load_global_css,
+)
+
+from utils.navigation import (
+    render_app_sidebar,
 )
 
 from utils.ui import (
@@ -37,6 +40,15 @@ st.set_page_config(
 )
 
 load_global_css()
+
+
+# =========================================================
+# 공통 사이드바
+# =========================================================
+
+render_app_sidebar(
+    current_page="teacher_dashboard"
+)
 
 
 # =========================================================
@@ -239,38 +251,6 @@ with st.spinner(
     dashboard_data = (
         load_teacher_dashboard_data()
     )
-
-
-# =========================================================
-# Sidebar
-# =========================================================
-
-st.sidebar.title(
-    "🔧 임베디드 구현 LAB"
-)
-
-st.sidebar.caption(
-    "시스템 프로그래밍"
-)
-
-st.sidebar.markdown(
-    "### 교사 메뉴"
-)
-
-st.sidebar.page_link(
-    "streamlit_app.py",
-    label="🏠 홈",
-)
-
-st.sidebar.page_link(
-    "pages/07_교사대시보드.py",
-    label="👨‍🏫 교사 대시보드",
-)
-
-
-with st.sidebar:
-
-    render_sidebar_auth()
 
 
 # =========================================================

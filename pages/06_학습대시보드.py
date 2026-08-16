@@ -9,7 +9,6 @@ import streamlit as st
 
 from utils.auth import (
     get_current_user,
-    render_user_info,
     require_login,
 )
 
@@ -39,6 +38,7 @@ from utils.sheets_api import (
 )
 
 from utils.theme import load_global_css
+from utils.navigation import render_app_sidebar
 
 from utils.ui import (
     render_breadcrumb,
@@ -57,6 +57,10 @@ st.set_page_config(
 )
 
 load_global_css()
+
+render_app_sidebar(
+    current_page="dashboard"
+)
 
 require_login()
 
@@ -542,73 +546,6 @@ lesson_links = {
     "3": "pages/03_학습3_모듈구현.py",
     "4": "pages/04_학습4_인터페이스.py",
 }
-
-
-# =========================================================
-# Sidebar
-# =========================================================
-
-st.sidebar.title(
-    "🔧 임베디드 구현 LAB"
-)
-
-st.sidebar.caption(
-    "시스템 프로그래밍"
-)
-
-st.sidebar.markdown(
-    "### 학습 메뉴"
-)
-
-st.sidebar.page_link(
-    "streamlit_app.py",
-    label="🏠 홈",
-)
-
-st.sidebar.page_link(
-    "pages/01_학습1_기술명세.py",
-    label="📘 학습 1 · 기술 명세 검토",
-)
-
-st.sidebar.page_link(
-    "pages/02_학습2_개발환경.py",
-    label="🛠️ 학습 2 · 개발 환경 구축",
-)
-
-st.sidebar.page_link(
-    "pages/03_학습3_모듈구현.py",
-    label="💻 학습 3 · 모듈 구현",
-)
-
-st.sidebar.page_link(
-    "pages/04_학습4_인터페이스.py",
-    label="🔗 학습 4 · 인터페이스 구현",
-)
-
-st.sidebar.page_link(
-    "pages/05_중간고사_종합대비.py",
-    label="🎯 중간고사 종합 대비",
-)
-
-st.sidebar.page_link(
-    "pages/06_학습대시보드.py",
-    label="📊 학습 대시보드",
-)
-
-st.sidebar.divider()
-
-with st.sidebar:
-
-    render_user_info()
-
-
-st.sidebar.caption(
-    "현재 학습 영역"
-)
-
-st.sidebar.markdown(
-    "📊 **나의 학습 대시보드**"
-)
 
 
 # =========================================================
