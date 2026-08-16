@@ -31,6 +31,7 @@ from utils.ui import (
 from utils.auth import (
     require_login,
     get_current_user,
+    render_user_info,
 )
 
 from utils.sheets_api import register_student
@@ -59,7 +60,7 @@ if user:
     )
 
     st.write("학생 등록 테스트:", register_result)
-    
+
 # =========================================================
 # 상수
 # =========================================================
