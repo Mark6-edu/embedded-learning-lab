@@ -865,10 +865,82 @@ details summary {
         var(--radius-md);
 }
 
-
 /* =========================================================
    21. BUTTONS
    ========================================================= */
+
+button[kind="primary"] {
+    color:
+        #000000 !important;
+
+    background:
+        var(--primary) !important;
+
+    border:
+        none !important;
+
+    border-radius:
+        10px !important;
+
+    font-weight:
+        700 !important;
+
+    box-shadow:
+        0 5px 14px
+        rgba(91, 92, 240, 0.16);
+}
+
+
+/* Streamlit 내부 텍스트까지 검정색으로 강제 */
+button[kind="primary"] p,
+button[kind="primary"] span,
+button[kind="primary"] div {
+    color:
+        #000000 !important;
+}
+
+
+button[kind="primary"]:hover {
+    color:
+        #000000 !important;
+
+    background:
+        var(--primary-dark) !important;
+}
+
+
+/* Hover 상태 내부 텍스트도 검정색 유지 */
+button[kind="primary"]:hover p,
+button[kind="primary"]:hover span,
+button[kind="primary"]:hover div {
+    color:
+        #000000 !important;
+}
+
+
+button[kind="secondary"] {
+    color:
+        var(--text-primary) !important;
+
+    background:
+        #ffffff !important;
+
+    border:
+        1px solid
+        var(--border-strong) !important;
+
+    border-radius:
+        10px !important;
+}
+
+
+/* Secondary 내부 텍스트도 진하게 유지 */
+button[kind="secondary"] p,
+button[kind="secondary"] span,
+button[kind="secondary"] div {
+    color:
+        var(--text-primary) !important;
+}
 
 button[kind="primary"] {
     background:
