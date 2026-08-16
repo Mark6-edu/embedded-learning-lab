@@ -4,6 +4,7 @@ import streamlit as st
 
 from utils.auth import (
     is_logged_in,
+    is_teacher,
     login,
     render_sidebar_auth,
 )
@@ -45,32 +46,47 @@ load_global_css()
 
 
 # =========================================================
-# 로그인 상태
+# 로그인 / 권한 상태
 # =========================================================
 
 LOGGED_IN = is_logged_in()
+
+TEACHER = (
+    is_teacher()
+    if LOGGED_IN
+    else False
+)
+
+STUDENT = (
+    LOGGED_IN
+    and not TEACHER
+)
 
 
 # =========================================================
 # Helper Functions
 # =========================================================
 
+
 def get_section_icon(
     section_id: str,
 ) -> str:
     """
-    소단원 완료 여부에 따라 아이콘을 반환합니다.
+    학생 로그인 상태에서만
+    소단원 완료 여부를 표시합니다.
 
-    비로그인 상태에서는 개인 진도처럼 보이지 않도록
-    기본 아이콘만 표시합니다.
+    비로그인 또는 교사 계정은
+    개인 학습 진도를 표시하지 않습니다.
     """
 
-    if not LOGGED_IN:
+    if not STUDENT:
         return "⬜"
 
     return (
         "✅"
-        if is_section_completed(section_id)
+        if is_section_completed(
+            section_id
+        )
         else "⬜"
     )
 
@@ -80,34 +96,45 @@ def get_lesson_button_label(
     progress: float,
 ) -> str:
     """
-    로그인 상태와 학습 진도율에 따라
-    학습 이동 버튼의 문구를 결정합니다.
+    사용자 상태에 따라
+    학습 이동 버튼 문구를 결정합니다.
     """
 
+    if TEACHER:
+        return (
+            f"학습 {lesson_id} 살펴보기"
+        )
+
     if not LOGGED_IN:
-        return f"학습 {lesson_id} 시작하기"
+        return (
+            f"학습 {lesson_id} 시작하기"
+        )
 
     if progress >= 100:
-        return f"학습 {lesson_id} 다시 보기"
+        return (
+            f"학습 {lesson_id} 다시 보기"
+        )
 
     if progress > 0:
-        return f"학습 {lesson_id} 계속하기"
+        return (
+            f"학습 {lesson_id} 계속하기"
+        )
 
-    return f"학습 {lesson_id} 시작하기"
+    return (
+        f"학습 {lesson_id} 시작하기"
+    )
 
 
 def format_overall_progress(
     progress: float,
 ) -> str:
     """
-    전체 진도율을 보기 좋은 문자열로 반환합니다.
-
-    예:
-    12.5 -> 12.5%
-    50.0 -> 50%
+    전체 진도율 표시용 문자열입니다.
     """
 
-    progress = float(progress)
+    progress = float(
+        progress
+    )
 
     if progress.is_integer():
         return f"{progress:.0f}%"
@@ -130,6 +157,11 @@ st.sidebar.caption(
 st.sidebar.markdown(
     "### 학습 메뉴"
 )
+
+
+# ---------------------------------------------------------
+# 공통 메뉴
+# ---------------------------------------------------------
 
 st.sidebar.page_link(
     "streamlit_app.py",
@@ -157,11 +189,11 @@ st.sidebar.page_link(
 )
 
 
-# ---------------------------------------------------------
-# 로그인 전용 메뉴
-# ---------------------------------------------------------
+# =========================================================
+# 학생 전용 메뉴
+# =========================================================
 
-if LOGGED_IN:
+if STUDENT:
 
     st.sidebar.page_link(
         "pages/05_중간고사_종합대비.py",
@@ -170,8 +202,29 @@ if LOGGED_IN:
 
     st.sidebar.page_link(
         "pages/06_학습대시보드.py",
-        label="📊 학습 대시보드",
+        label="📊 나의 학습 대시보드",
     )
+
+
+# =========================================================
+# 교사 전용 메뉴
+# =========================================================
+
+elif TEACHER:
+
+    st.sidebar.markdown(
+        "### 교사 메뉴"
+    )
+
+    st.sidebar.page_link(
+        "pages/07_교사대시보드.py",
+        label="👨‍🏫 교사 대시보드",
+    )
+
+
+# =========================================================
+# 비로그인 상태
+# =========================================================
 
 else:
 
@@ -187,10 +240,11 @@ else:
 
 
 # =========================================================
-# 사이드바 로그인 / 로그아웃 영역
+# 사이드바 로그인 / 로그아웃
 # =========================================================
 
 with st.sidebar:
+
     render_sidebar_auth()
 
 
@@ -223,39 +277,47 @@ st.sidebar.markdown(
 
 
 # =========================================================
-# 로그인 학생 최초 정보 입력
+# 학생 최초 프로필 입력
 # =========================================================
 #
-# Google 로그인은 되었지만 students 시트의
-# class_name / student_number가 비어 있으면
-# 여기에서 최초 입력 화면을 보여줍니다.
+# 중요:
 #
-# 입력이 완료될 때까지 이후 홈 화면은 실행하지 않습니다.
+# 학생 로그인
+# → 프로필 입력 필요
+#
+# 교사 로그인
+# → 학생 프로필 입력 절대 하지 않음
 # =========================================================
 
-if LOGGED_IN:
+if STUDENT:
     require_student_profile()
 
 
 # =========================================================
-# 학습 진도 데이터
-# =========================================================
-#
-# 로그인 상태:
-#   Google Sheets와 연동된 개인 진도를 사용
-#
-# 비로그인 상태:
-#   개인 진도처럼 보이지 않도록 0으로 처리
+# 학생 학습 진도
 # =========================================================
 
-if LOGGED_IN:
+if STUDENT:
 
-    lesson_1_progress = get_lesson_progress("1")
-    lesson_2_progress = get_lesson_progress("2")
-    lesson_3_progress = get_lesson_progress("3")
-    lesson_4_progress = get_lesson_progress("4")
+    lesson_1_progress = (
+        get_lesson_progress("1")
+    )
 
-    overall_progress = get_overall_progress()
+    lesson_2_progress = (
+        get_lesson_progress("2")
+    )
+
+    lesson_3_progress = (
+        get_lesson_progress("3")
+    )
+
+    lesson_4_progress = (
+        get_lesson_progress("4")
+    )
+
+    overall_progress = (
+        get_overall_progress()
+    )
 
     completed_sections = (
         get_completed_section_count()
@@ -265,6 +327,11 @@ if LOGGED_IN:
         get_total_section_count()
     )
 
+
+# =========================================================
+# 비로그인 / 교사
+# =========================================================
+
 else:
 
     lesson_1_progress = 0.0
@@ -273,7 +340,6 @@ else:
     lesson_4_progress = 0.0
 
     overall_progress = 0.0
-
     completed_sections = 0
 
     total_sections = (
@@ -300,25 +366,22 @@ st.markdown(
 )
 
 st.info(
-    "NCS 핵심 이론을 학습하고, 실습과 형성평가를 통해 "
-    "개념을 확인한 뒤 실제 Arduino 프로젝트에 적용합니다."
+    "NCS 핵심 이론을 학습하고, "
+    "실습과 형성평가를 통해 개념을 확인한 뒤 "
+    "실제 Arduino 프로젝트에 적용합니다."
 )
 
 
 # =========================================================
-# 전체 학습 진행 상황
+# 학생 학습 진행 상황
 # =========================================================
 
-st.markdown(
-    "## 📊 나의 학습 진행 상황"
-)
+if STUDENT:
 
+    st.markdown(
+        "## 📊 나의 학습 진행 상황"
+    )
 
-# ---------------------------------------------------------
-# 로그인 상태
-# ---------------------------------------------------------
-
-if LOGGED_IN:
 
     (
         progress_col1,
@@ -377,14 +440,16 @@ if LOGGED_IN:
 
     if (
         total_sections > 0
-        and completed_sections == total_sections
+        and completed_sections
+        == total_sections
     ):
 
         st.success(
             "🎉 모든 학습 영역을 완료했습니다! "
-            "이제 중간고사 종합 대비와 "
-            "Arduino 프로젝트에 집중해보세요."
+            "중간고사 종합 대비와 Arduino 프로젝트에 "
+            "집중해보세요."
         )
+
 
     elif completed_sections > 0:
 
@@ -394,6 +459,7 @@ if LOGGED_IN:
             "완료하지 않은 학습을 이어서 진행해보세요."
         )
 
+
     else:
 
         st.info(
@@ -402,11 +468,47 @@ if LOGGED_IN:
         )
 
 
-# ---------------------------------------------------------
-# 비로그인 상태
-# ---------------------------------------------------------
+# =========================================================
+# 교사 모드
+# =========================================================
+
+elif TEACHER:
+
+    st.markdown(
+        "## 👨‍🏫 교사 모드"
+    )
+
+    with st.container(
+        border=True
+    ):
+
+        st.markdown(
+            "### 학생 학습 현황을 확인할 수 있습니다."
+        )
+
+        st.write(
+            "교사 계정으로 로그인되어 있습니다. "
+            "학생별 학습 진도, 형성평가, "
+            "중간고사 및 누적 오답을 "
+            "교사 대시보드에서 확인할 수 있습니다."
+        )
+
+        st.page_link(
+            "pages/07_교사대시보드.py",
+            label="👨‍🏫 교사 대시보드 열기",
+            width="stretch",
+        )
+
+
+# =========================================================
+# 비로그인
+# =========================================================
 
 else:
+
+    st.markdown(
+        "## 📊 나의 학습 진행 상황"
+    )
 
     with st.container(
         border=True
@@ -417,8 +519,10 @@ else:
         )
 
         st.write(
-            "학습 1~4의 콘텐츠는 로그인 없이 자유롭게 이용할 수 있습니다. "
-            "Google 계정으로 로그인하면 개인 학습 기록을 저장하고 "
+            "학습 1~4의 콘텐츠는 로그인 없이 "
+            "자유롭게 이용할 수 있습니다. "
+            "Google 계정으로 로그인하면 "
+            "개인 학습 기록을 저장하고 "
             "다른 기기에서도 이어서 학습할 수 있습니다."
         )
 
@@ -440,6 +544,7 @@ else:
             type="primary",
             width="stretch",
         ):
+
             login()
 
 
@@ -468,7 +573,9 @@ learning_steps = [
         "lesson_id": "1",
         "icon": "📘",
         "title": "학습 1",
-        "description": "기술 명세 검토하기",
+        "description": (
+            "기술 명세 검토하기"
+        ),
         "topics": [
             {
                 "section_id": "1-1",
@@ -484,14 +591,19 @@ learning_steps = [
                 ),
             },
         ],
-        "link": "pages/01_학습1_기술명세.py",
+        "link": (
+            "pages/01_학습1_기술명세.py"
+        ),
         "progress": lesson_1_progress,
     },
+
     {
         "lesson_id": "2",
         "icon": "🛠️",
         "title": "학습 2",
-        "description": "애플리케이션 개발 환경 구축하기",
+        "description": (
+            "애플리케이션 개발 환경 구축하기"
+        ),
         "topics": [
             {
                 "section_id": "2-1",
@@ -506,19 +618,25 @@ learning_steps = [
                 ),
             },
         ],
-        "link": "pages/02_학습2_개발환경.py",
+        "link": (
+            "pages/02_학습2_개발환경.py"
+        ),
         "progress": lesson_2_progress,
     },
+
     {
         "lesson_id": "3",
         "icon": "💻",
         "title": "학습 3",
-        "description": "애플리케이션 모듈 구현하기",
+        "description": (
+            "애플리케이션 모듈 구현하기"
+        ),
         "topics": [
             {
                 "section_id": "3-1",
                 "title": (
-                    "3-1. 애플리케이션 구현 및 오류 제거"
+                    "3-1. 애플리케이션 구현 및 "
+                    "오류 제거"
                 ),
             },
             {
@@ -528,14 +646,19 @@ learning_steps = [
                 ),
             },
         ],
-        "link": "pages/03_학습3_모듈구현.py",
+        "link": (
+            "pages/03_학습3_모듈구현.py"
+        ),
         "progress": lesson_3_progress,
     },
+
     {
         "lesson_id": "4",
         "icon": "🔗",
         "title": "학습 4",
-        "description": "애플리케이션 인터페이스 구현하기",
+        "description": (
+            "애플리케이션 인터페이스 구현하기"
+        ),
         "topics": [
             {
                 "section_id": "4-1",
@@ -550,14 +673,16 @@ learning_steps = [
                 ),
             },
         ],
-        "link": "pages/04_학습4_인터페이스.py",
+        "link": (
+            "pages/04_학습4_인터페이스.py"
+        ),
         "progress": lesson_4_progress,
     },
 ]
 
 
 # =========================================================
-# 학습 카드 출력
+# 학습 카드
 # =========================================================
 
 left_col, right_col = st.columns(
@@ -587,11 +712,13 @@ for index, item in enumerate(
             # 카드 제목
             # -------------------------------------------------
 
-            title_col, status_col = st.columns(
-                [
-                    4,
-                    1,
-                ]
+            title_col, status_col = (
+                st.columns(
+                    [
+                        4,
+                        1,
+                    ]
+                )
             )
 
 
@@ -606,7 +733,7 @@ for index, item in enumerate(
             with status_col:
 
                 if (
-                    LOGGED_IN
+                    STUDENT
                     and is_lesson_completed(
                         item[
                             "lesson_id"
@@ -627,7 +754,7 @@ for index, item in enumerate(
 
 
             # -------------------------------------------------
-            # 소단원 상태
+            # 소단원
             # -------------------------------------------------
 
             for topic in item[
@@ -650,10 +777,10 @@ for index, item in enumerate(
 
 
             # -------------------------------------------------
-            # 로그인 상태
+            # 학생 진도 표시
             # -------------------------------------------------
 
-            if LOGGED_IN:
+            if STUDENT:
 
                 st.caption(
                     f"현재 진도율 · "
@@ -668,9 +795,11 @@ for index, item in enumerate(
                 )
 
 
-                if item[
-                    "progress"
-                ] >= 100:
+                if (
+                    item[
+                        "progress"
+                    ] >= 100
+                ):
 
                     st.success(
                         f"🎉 {item['title']}의 "
@@ -678,9 +807,11 @@ for index, item in enumerate(
                     )
 
 
-                elif item[
-                    "progress"
-                ] > 0:
+                elif (
+                    item[
+                        "progress"
+                    ] > 0
+                ):
 
                     remaining_count = sum(
                         1
@@ -702,7 +833,19 @@ for index, item in enumerate(
 
 
             # -------------------------------------------------
-            # 비로그인 상태
+            # 교사
+            # -------------------------------------------------
+
+            elif TEACHER:
+
+                st.caption(
+                    "👨‍🏫 교사 모드 · "
+                    "학습 콘텐츠를 확인할 수 있습니다."
+                )
+
+
+            # -------------------------------------------------
+            # 비로그인
             # -------------------------------------------------
 
             else:
@@ -714,7 +857,7 @@ for index, item in enumerate(
 
 
             # -------------------------------------------------
-            # 이동 버튼
+            # 이동
             # -------------------------------------------------
 
             st.page_link(
@@ -734,71 +877,122 @@ for index, item in enumerate(
 
 
 # =========================================================
-# 중간고사 종합 대비 안내
+# 학생 중간고사 종합 대비
 # =========================================================
 
-st.divider()
+if not TEACHER:
 
-st.markdown(
-    "## 🎯 중간고사 종합 대비"
-)
+    st.divider()
 
-exam_col1, exam_col2 = st.columns(
-    [
-        3,
-        1,
-    ]
-)
-
-
-with exam_col1:
-
-    st.write(
-        "학습 1부터 학습 4까지의 중간고사 대비 문제를 "
-        "무작위로 출제하여 실제 시험처럼 연습할 수 있습니다."
-    )
-
-    st.caption(
-        "시험 범위 · 난이도 · 문제 수 선택 → "
-        "자동 채점 → 단원별 분석 → 오답 확인"
+    st.markdown(
+        "## 🎯 중간고사 종합 대비"
     )
 
 
-    if not LOGGED_IN:
+    exam_col1, exam_col2 = st.columns(
+        [
+            3,
+            1,
+        ]
+    )
 
-        st.info(
-            "🔐 중간고사 종합 대비와 개인 학습 대시보드는 "
-            "Google 로그인 후 사용할 수 있습니다."
+
+    with exam_col1:
+
+        st.write(
+            "학습 1부터 학습 4까지의 "
+            "중간고사 대비 문제를 무작위로 출제하여 "
+            "실제 시험처럼 연습할 수 있습니다."
+        )
+
+        st.caption(
+            "시험 범위 · 난이도 · 문제 수 선택 → "
+            "자동 채점 → 단원별 분석 → 오답 확인"
         )
 
 
-with exam_col2:
+        if not LOGGED_IN:
 
-    if LOGGED_IN:
+            st.info(
+                "🔐 중간고사 종합 대비와 "
+                "개인 학습 대시보드는 "
+                "Google 로그인 후 사용할 수 있습니다."
+            )
 
-        st.page_link(
-            "pages/05_중간고사_종합대비.py",
-            label="🎯 종합 모의고사 시작",
-            width="stretch",
+
+    with exam_col2:
+
+        if STUDENT:
+
+            st.page_link(
+                "pages/05_중간고사_종합대비.py",
+                label="🎯 종합 모의고사 시작",
+                width="stretch",
+            )
+
+            st.page_link(
+                "pages/06_학습대시보드.py",
+                label="📊 나의 학습 현황 보기",
+                width="stretch",
+            )
+
+
+        else:
+
+            st.page_link(
+                "pages/05_중간고사_종합대비.py",
+                label="🔒 종합 모의고사",
+                width="stretch",
+            )
+
+            st.page_link(
+                "pages/06_학습대시보드.py",
+                label="🔒 학습 대시보드",
+                width="stretch",
+            )
+
+
+# =========================================================
+# 교사 대시보드 안내
+# =========================================================
+
+else:
+
+    st.divider()
+
+    st.markdown(
+        "## 👨‍🏫 학생 학습 관리"
+    )
+
+
+    teacher_col1, teacher_col2 = (
+        st.columns(
+            [
+                3,
+                1,
+            ]
+        )
+    )
+
+
+    with teacher_col1:
+
+        st.write(
+            "2학년 3반 학생들의 학습 진도와 "
+            "평가 결과를 종합적으로 확인할 수 있습니다."
         )
 
-        st.page_link(
-            "pages/06_학습대시보드.py",
-            label="📊 나의 학습 현황 보기",
-            width="stretch",
+        st.caption(
+            "학생별 진도 · 형성평가 · "
+            "중간고사 · 누적 오답 · 취약 영역"
         )
 
-    else:
+
+    with teacher_col2:
 
         st.page_link(
-            "pages/05_중간고사_종합대비.py",
-            label="🔒 종합 모의고사",
-            width="stretch",
-        )
-
-        st.page_link(
-            "pages/06_학습대시보드.py",
-            label="🔒 학습 대시보드",
+            "pages/07_교사대시보드.py",
+            label="👨‍🏫 교사 대시보드 열기",
             width="stretch",
         )
 
@@ -941,8 +1135,11 @@ st.markdown(
     "## 🧩 이 웹앱은 이렇게 활용합니다"
 )
 
-guide_col1, guide_col2, guide_col3 = st.columns(
-    3
+
+guide_col1, guide_col2, guide_col3 = (
+    st.columns(
+        3
+    )
 )
 
 
@@ -1001,6 +1198,7 @@ with guide_col3:
 st.divider()
 
 st.caption(
-    "📌 학습 콘텐츠는 NCS 「임베디드 애플리케이션 구현」 "
+    "📌 학습 콘텐츠는 NCS "
+    "「임베디드 애플리케이션 구현」 "
     "학습모듈의 구조를 기준으로 구성합니다."
 )
