@@ -28,6 +28,10 @@ from utils.ui import (
     render_progress_bar,
 )
 
+from utils.auth import (
+    require_login,
+    render_user_info,
+)
 
 # =========================================================
 # 페이지 설정
@@ -40,6 +44,8 @@ st.set_page_config(
 )
 
 load_global_css()
+
+require_login()
 
 
 # =========================================================
@@ -1202,6 +1208,9 @@ st.sidebar.page_link(
 
 st.sidebar.divider()
 
+with st.sidebar:
+    render_user_info()
+    
 st.sidebar.caption(
     "현재 학습 영역"
 )
