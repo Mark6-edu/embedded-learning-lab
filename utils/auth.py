@@ -76,6 +76,29 @@ def get_current_user() -> dict[str, Any] | None:
     except Exception:
         return None
 
+# =========================================================
+# 현재 사용자 ID
+# =========================================================
+
+def get_user_id() -> str:
+    """
+    현재 로그인한 사용자의 고유 Google 사용자 ID(sub)를 반환합니다.
+
+    로그인하지 않았거나 사용자 정보를 가져올 수 없는 경우
+    빈 문자열을 반환합니다.
+    """
+
+    user = get_current_user()
+
+    if not user:
+        return ""
+
+    return str(
+        user.get(
+            "sub",
+            "",
+        )
+    ).strip()
 
 # =========================================================
 # 로그인
