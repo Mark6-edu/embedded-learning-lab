@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from collections import Counter, defaultdict
+from collections import defaultdict
 from html import escape
 from textwrap import dedent
 from typing import Any
@@ -21,6 +21,19 @@ from data.quizzes.quiz_3_2 import EXAM_PRACTICE_3_2
 from data.quizzes.quiz_4_1 import EXAM_PRACTICE_4_1
 from data.quizzes.quiz_4_2 import EXAM_PRACTICE_4_2
 
+from utils.auth import (
+    get_current_user,
+    render_user_info,
+    require_login,
+)
+
+from utils.sheets_api import (
+    load_midterm_results,
+    register_student,
+    save_midterm_result,
+    save_wrong_answers,
+)
+
 from utils.theme import load_global_css
 
 from utils.ui import (
@@ -28,18 +41,6 @@ from utils.ui import (
     render_progress_bar,
 )
 
-from utils.auth import (
-    require_login,
-    get_current_user,
-    render_user_info,
-)
-
-from utils.sheets_api import (
-    save_progress,
-    load_progress,
-)
-
-from utils.sheets_api import register_student
 
 # =========================================================
 # 페이지 설정
@@ -55,51 +56,24 @@ load_global_css()
 
 require_login()
 
-user = get_current_user()
 
-if user:
+# =========================================================
+# 현재 로그인 사용자
+# =========================================================
 
-    user_id = user.get(
-        "sub",
-        "",
-    )
+current_user = get_current_user()
 
-    if st.button(
-        "🧪 진도 저장 테스트",
-    ):
-        result = save_progress(
-            user_id=user_id,
-            section_id="1-1",
-            completed=True,
+CURRENT_USER_ID = ""
+
+if current_user:
+
+    CURRENT_USER_ID = str(
+        current_user.get(
+            "sub",
+            "",
         )
+    ).strip()
 
-        st.write(
-            "저장 결과:",
-            result,
-        )
-
-    if st.button(
-        "🧪 진도 불러오기 테스트",
-    ):
-        result = load_progress(
-            user_id
-        )
-
-        st.write(
-            "불러오기 결과:",
-            result,
-        )
-
-user = get_current_user()
-
-if user:
-    register_result = register_student(
-        user_id=user.get("sub", ""),
-        email=user.get("email", ""),
-        name=user.get("name", ""),
-    )
-
-    st.write("학생 등록 테스트:", register_result)
 
 # =========================================================
 # 상수
@@ -157,6 +131,19 @@ DEFAULT_STATE = {
     "midterm_exam_result": None,
     "midterm_exam_config": {},
     "midterm_exam_history": [],
+
+    # 현재 시험의 Google Sheets 저장 상태
+    "midterm_remote_saved": False,
+    "midterm_remote_exam_id": "",
+    "midterm_remote_attempt_no": None,
+
+    # 로그인 후 원격 기록 복원 여부
+    "midterm_remote_history_synced": False,
+    "midterm_remote_history_user_id": "",
+
+    # 학생 등록 중복 호출 방지
+    "midterm_student_registered": False,
+    "midterm_student_registered_user_id": "",
 }
 
 
@@ -164,27 +151,44 @@ for key, value in DEFAULT_STATE.items():
 
     if key not in st.session_state:
 
-        if isinstance(value, list):
-            st.session_state[key] = []
+        if isinstance(
+            value,
+            list,
+        ):
+            st.session_state[
+                key
+            ] = []
 
-        elif isinstance(value, dict):
-            st.session_state[key] = {}
+        elif isinstance(
+            value,
+            dict,
+        ):
+            st.session_state[
+                key
+            ] = {}
 
         else:
-            st.session_state[key] = value
+            st.session_state[
+                key
+            ] = value
 
 
 # =========================================================
 # HTML Helper
 # =========================================================
 
-def render_html(html: str) -> None:
+def render_html(
+    html: str,
+) -> None:
     """
-    Markdown Parser를 거치지 않고 HTML 직접 렌더링.
+    Markdown Parser를 거치지 않고
+    HTML을 직접 렌더링합니다.
     """
 
     st.html(
-        dedent(html).strip()
+        dedent(
+            html
+        ).strip()
     )
 
 
@@ -197,20 +201,24 @@ def render_surface_header(
     label_html = ""
 
     if label:
+
         label_html = (
             '<div class="edu-surface-label">'
             f"{escape(str(label))}"
             "</div>"
         )
 
+
     description_html = ""
 
     if description:
+
         description_html = (
             '<div class="edu-surface-desc">'
             f"{escape(str(description))}"
             "</div>"
         )
+
 
     render_html(
         f"""
@@ -232,14 +240,17 @@ def render_pills(
     if not items:
         return
 
+
     pills_html = "".join(
         (
             '<span class="edu-pill">'
             f"{escape(str(item))}"
             "</span>"
         )
-        for item in items
+        for item
+        in items
     )
+
 
     render_html(
         f"""
@@ -250,33 +261,378 @@ def render_pills(
     )
 
 
-def render_exam_notice(
-    title: str,
-    content: str,
-) -> None:
+# =========================================================
+# 학생 등록
+# =========================================================
 
-    render_html(
-        f"""
-        <div class="edu-concept">
+def ensure_student_registered() -> None:
+    """
+    현재 로그인 사용자를 students 시트에
+    세션당 한 번 등록/갱신합니다.
+    """
 
-            <div class="edu-concept-title">
-                {escape(title)}
-            </div>
+    if not current_user:
+        return
 
-            <div class="edu-concept-body">
-                {escape(content)}
-            </div>
 
-        </div>
-        """
+    user_id = CURRENT_USER_ID
+
+    if not user_id:
+        return
+
+
+    already_registered = bool(
+        st.session_state.get(
+            "midterm_student_registered",
+            False,
+        )
     )
+
+    registered_user_id = str(
+        st.session_state.get(
+            "midterm_student_registered_user_id",
+            "",
+        )
+    )
+
+
+    if (
+        already_registered
+        and registered_user_id == user_id
+    ):
+        return
+
+
+    try:
+
+        result = register_student(
+            user_id=user_id,
+            email=str(
+                current_user.get(
+                    "email",
+                    "",
+                )
+            ),
+            name=str(
+                current_user.get(
+                    "name",
+                    "",
+                )
+            ),
+        )
+
+
+        if result.get(
+            "success",
+            False,
+        ):
+
+            st.session_state[
+                "midterm_student_registered"
+            ] = True
+
+            st.session_state[
+                "midterm_student_registered_user_id"
+            ] = user_id
+
+    except Exception:
+
+        # 학생 등록 실패가 시험 기능 전체를
+        # 중단시키면 안 됩니다.
+        pass
+
+
+ensure_student_registered()
+
+
+# =========================================================
+# 중간고사 원격 기록 복원
+# =========================================================
+
+def parse_remote_list(
+    value: Any,
+) -> list[str]:
+    """
+    Apps Script에서 "|"로 저장한 문자열을
+    다시 list[str]로 복원합니다.
+    """
+
+    if isinstance(
+        value,
+        list,
+    ):
+
+        return [
+            str(item).strip()
+            for item in value
+            if str(item).strip()
+        ]
+
+
+    text = str(
+        value or ""
+    ).strip()
+
+
+    if not text:
+        return []
+
+
+    return [
+        item.strip()
+        for item in text.split("|")
+        if item.strip()
+    ]
+
+
+def load_remote_exam_history_once() -> None:
+    """
+    Google Sheets의 midterm_results 기록을
+    로그인 세션당 한 번 불러와
+    midterm_exam_history에 복원합니다.
+    """
+
+    user_id = CURRENT_USER_ID
+
+    if not user_id:
+        return
+
+
+    synced = bool(
+        st.session_state.get(
+            "midterm_remote_history_synced",
+            False,
+        )
+    )
+
+    synced_user_id = str(
+        st.session_state.get(
+            "midterm_remote_history_user_id",
+            "",
+        )
+    )
+
+
+    if (
+        synced
+        and synced_user_id == user_id
+    ):
+        return
+
+
+    try:
+
+        remote_results = (
+            load_midterm_results(
+                user_id
+            )
+        )
+
+    except Exception:
+
+        # 실패했을 때 synced=True를 만들지 않음.
+        # 다음 rerun에서 다시 시도 가능.
+        return
+
+
+    if not isinstance(
+        remote_results,
+        list,
+    ):
+        return
+
+
+    remote_history = []
+
+
+    for item in remote_results:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+            continue
+
+
+        attempt = int(
+            item.get(
+                "attempt_no",
+                0,
+            )
+            or 0
+        )
+
+
+        if attempt <= 0:
+            continue
+
+
+        remote_history.append(
+            {
+                "exam_id": str(
+                    item.get(
+                        "exam_id",
+                        "",
+                    )
+                ),
+
+                "attempt": attempt,
+
+                "score": int(
+                    float(
+                        item.get(
+                            "score",
+                            0,
+                        )
+                        or 0
+                    )
+                ),
+
+                "correct_count": int(
+                    item.get(
+                        "correct",
+                        0,
+                    )
+                    or 0
+                ),
+
+                "total_count": int(
+                    item.get(
+                        "total",
+                        0,
+                    )
+                    or 0
+                ),
+
+                "wrong_count": int(
+                    item.get(
+                        "wrong_count",
+                        0,
+                    )
+                    or 0
+                ),
+
+                "units": parse_remote_list(
+                    item.get(
+                        "selected_units",
+                        "",
+                    )
+                ),
+
+                "difficulties": parse_remote_list(
+                    item.get(
+                        "difficulties",
+                        "",
+                    )
+                ),
+
+                "submitted_at": str(
+                    item.get(
+                        "submitted_at",
+                        "",
+                    )
+                ),
+
+                # 과거 원격 기록에서는
+                # 상세 통계를 현재 저장하지 않으므로
+                # 비어 있는 값으로 복원
+                "unit_stats": {},
+                "difficulty_stats": {},
+                "topic_stats": {},
+                "wrong_questions": [],
+            }
+        )
+
+
+    remote_history.sort(
+        key=lambda item: item[
+            "attempt"
+        ]
+    )
+
+
+    # 새 로그인 세션에서는 일반적으로
+    # history가 비어 있으므로 그대로 복원.
+    #
+    # 혹시 현재 세션에 기록이 존재한다면
+    # exam_id 기준으로 병합한다.
+
+    current_history = st.session_state[
+        "midterm_exam_history"
+    ]
+
+
+    if not current_history:
+
+        st.session_state[
+            "midterm_exam_history"
+        ] = remote_history
+
+    else:
+
+        existing_exam_ids = {
+            str(
+                item.get(
+                    "exam_id",
+                    "",
+                )
+            )
+            for item in current_history
+            if item.get(
+                "exam_id"
+            )
+        }
+
+
+        for remote_item in remote_history:
+
+            remote_exam_id = str(
+                remote_item.get(
+                    "exam_id",
+                    "",
+                )
+            )
+
+
+            if (
+                remote_exam_id
+                and remote_exam_id
+                in existing_exam_ids
+            ):
+                continue
+
+
+            current_history.append(
+                remote_item
+            )
+
+
+        current_history.sort(
+            key=lambda item: item[
+                "attempt"
+            ]
+        )
+
+
+    st.session_state[
+        "midterm_remote_history_synced"
+    ] = True
+
+    st.session_state[
+        "midterm_remote_history_user_id"
+    ] = user_id
+
+
+load_remote_exam_history_once()
 
 
 # =========================================================
 # Question Helper
 # =========================================================
 
-def question_id(question: Any) -> str:
+def question_id(
+    question: Any,
+) -> str:
 
     return str(
         getattr(
@@ -287,7 +643,9 @@ def question_id(question: Any) -> str:
     )
 
 
-def question_type(question: Any) -> str:
+def question_type(
+    question: Any,
+) -> str:
 
     value = str(
         getattr(
@@ -296,6 +654,7 @@ def question_type(question: Any) -> str:
             "",
         )
     ).strip().lower()
+
 
     aliases = {
         "multiple_choice": "multiple_choice",
@@ -315,27 +674,39 @@ def question_type(question: Any) -> str:
         "주관식": "short_answer",
     }
 
+
     return aliases.get(
         value,
         value,
     )
 
 
-def normalize_text(value: Any) -> str:
+def normalize_text(
+    value: Any,
+) -> str:
 
     if value is None:
         return ""
+
 
     return (
         str(value)
         .strip()
         .lower()
-        .replace(" ", "")
-        .replace("\n", "")
+        .replace(
+            " ",
+            "",
+        )
+        .replace(
+            "\n",
+            "",
+        )
     )
 
 
-def answer_candidates(answer: Any) -> list[Any]:
+def answer_candidates(
+    answer: Any,
+) -> list[Any]:
 
     if isinstance(
         answer,
@@ -345,9 +716,14 @@ def answer_candidates(answer: Any) -> list[Any]:
             set,
         ),
     ):
-        return list(answer)
+        return list(
+            answer
+        )
 
-    return [answer]
+
+    return [
+        answer
+    ]
 
 
 def is_correct(
@@ -358,22 +734,30 @@ def is_correct(
     if user_answer is None:
         return False
 
-    correct_answers = answer_candidates(
-        getattr(
-            question,
-            "answer",
-            "",
+
+    correct_answers = (
+        answer_candidates(
+            getattr(
+                question,
+                "answer",
+                "",
+            )
         )
     )
+
 
     normalized_user = normalize_text(
         user_answer
     )
 
+
     return any(
         normalized_user
-        == normalize_text(correct)
-        for correct in correct_answers
+        == normalize_text(
+            correct
+        )
+        for correct
+        in correct_answers
     )
 
 
@@ -389,9 +773,13 @@ def correct_answer_text(
         )
     )
 
+
     return " / ".join(
-        str(answer)
-        for answer in answers
+        str(
+            answer
+        )
+        for answer
+        in answers
     )
 
 
@@ -403,16 +791,25 @@ def question_unit(
         question
     )
 
-    parts = qid.split("_")
 
-    if len(parts) >= 2:
+    parts = qid.split(
+        "_"
+    )
+
+
+    if len(
+        parts
+    ) >= 2:
 
         candidate = (
             f"{parts[0]}-{parts[1]}"
         )
 
+
         if candidate in QUIZ_BANK:
+
             return candidate
+
 
     return "기타"
 
@@ -429,6 +826,7 @@ def question_difficulty(
         )
     ).strip()
 
+
     return value or "보통"
 
 
@@ -443,6 +841,7 @@ def question_topic(
             "",
         )
     ).strip()
+
 
     return value or "기타"
 
@@ -497,20 +896,26 @@ def render_exam_question(
         key=f"midterm_question_{qid}"
     ):
 
-        header_col, difficulty_col = st.columns(
-            [7, 2]
+        header_col, difficulty_col = (
+            st.columns(
+                [7, 2]
+            )
         )
+
 
         with header_col:
 
             st.markdown(
-                f"### {number}. {question_text}"
+                f"### {number}. "
+                f"{question_text}"
             )
+
 
         with difficulty_col:
 
             st.caption(
-                f"{unit} · {difficulty}"
+                f"{unit} · "
+                f"{difficulty}"
             )
 
 
@@ -531,10 +936,13 @@ def render_exam_question(
                 "svn ",
             ]
 
+
             is_code_passage = any(
                 keyword in passage
-                for keyword in code_keywords
+                for keyword
+                in code_keywords
             )
+
 
             if is_code_passage:
 
@@ -566,6 +974,7 @@ def render_exam_question(
                 or []
             )
 
+
             value = st.radio(
                 "답을 선택하세요.",
                 options,
@@ -586,11 +995,14 @@ def render_exam_question(
                 or []
             )
 
+
             if not options:
+
                 options = [
                     "O",
                     "X",
                 ]
+
 
             value = st.radio(
                 "O / X",
@@ -623,6 +1035,7 @@ def render_exam_question(
                 or []
             )
 
+
             if options:
 
                 value = st.radio(
@@ -646,6 +1059,7 @@ def render_exam_question(
             "midterm_exam_answers"
         ][qid] = value
 
+
         return value
 
 
@@ -660,6 +1074,7 @@ def filtered_question_pool(
 
     questions: list[Any] = []
 
+
     for unit in selected_units:
 
         for question in QUIZ_BANK[
@@ -672,6 +1087,7 @@ def filtered_question_pool(
                 )
             )
 
+
             if (
                 not selected_difficulties
                 or difficulty
@@ -681,6 +1097,7 @@ def filtered_question_pool(
                 questions.append(
                     question
                 )
+
 
     return questions
 
@@ -700,15 +1117,20 @@ def start_exam(
         selected_difficulties,
     )
 
+
     actual_count = min(
         question_count,
-        len(pool),
+        len(
+            pool
+        ),
     )
+
 
     selected_questions = random.sample(
         pool,
         actual_count,
     )
+
 
     st.session_state[
         "midterm_exam_questions"
@@ -729,10 +1151,19 @@ def start_exam(
     st.session_state[
         "midterm_exam_config"
     ] = {
-        "units": selected_units.copy(),
-        "difficulties": selected_difficulties.copy(),
-        "question_count": actual_count,
+        "units": (
+            selected_units.copy()
+        ),
+
+        "difficulties": (
+            selected_difficulties.copy()
+        ),
+
+        "question_count": (
+            actual_count
+        ),
     }
+
 
     st.session_state[
         "midterm_exam_started"
@@ -741,6 +1172,20 @@ def start_exam(
     st.session_state[
         "midterm_exam_finished"
     ] = False
+
+
+    # 새로운 시험이므로 원격 저장 상태 초기화
+    st.session_state[
+        "midterm_remote_saved"
+    ] = False
+
+    st.session_state[
+        "midterm_remote_exam_id"
+    ] = ""
+
+    st.session_state[
+        "midterm_remote_attempt_no"
+    ] = None
 
 
 def clear_active_exam() -> None:
@@ -774,6 +1219,249 @@ def clear_active_exam() -> None:
     ] = {}
 
 
+    st.session_state[
+        "midterm_remote_saved"
+    ] = False
+
+    st.session_state[
+        "midterm_remote_exam_id"
+    ] = ""
+
+    st.session_state[
+        "midterm_remote_attempt_no"
+    ] = None
+
+
+# =========================================================
+# Google Sheets에 시험 저장
+# =========================================================
+
+def save_exam_to_remote(
+    result: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    현재 시험을 midterm_results와
+    wrong_answers에 저장합니다.
+
+    한 시험에 대해 세션당 한 번만 실행합니다.
+    """
+
+    if not CURRENT_USER_ID:
+        return None
+
+
+    if st.session_state.get(
+        "midterm_remote_saved",
+        False,
+    ):
+
+        return {
+            "success": True,
+
+            "exam_id": st.session_state.get(
+                "midterm_remote_exam_id",
+                "",
+            ),
+
+            "attempt_no": st.session_state.get(
+                "midterm_remote_attempt_no",
+            ),
+
+            "already_saved": True,
+        }
+
+
+    config = st.session_state[
+        "midterm_exam_config"
+    ]
+
+
+    try:
+
+        midterm_response = (
+            save_midterm_result(
+                user_id=CURRENT_USER_ID,
+
+                selected_units=config.get(
+                    "units",
+                    [],
+                ),
+
+                difficulties=config.get(
+                    "difficulties",
+                    [],
+                ),
+
+                question_count=result[
+                    "total_count"
+                ],
+
+                score=result[
+                    "score"
+                ],
+
+                correct=result[
+                    "correct_count"
+                ],
+
+                total=result[
+                    "total_count"
+                ],
+
+                wrong_count=result[
+                    "wrong_count"
+                ],
+            )
+        )
+
+    except Exception:
+
+        return None
+
+
+    if not isinstance(
+        midterm_response,
+        dict,
+    ):
+        return None
+
+
+    if not midterm_response.get(
+        "success",
+        False,
+    ):
+        return None
+
+
+    exam_id = str(
+        midterm_response.get(
+            "exam_id",
+            "",
+        )
+    ).strip()
+
+
+    attempt_no = (
+        midterm_response.get(
+            "attempt_no"
+        )
+    )
+
+
+    try:
+
+        attempt_no = int(
+            attempt_no
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        attempt_no = None
+
+
+    # -----------------------------------------------------
+    # 오답 데이터 변환
+    # -----------------------------------------------------
+
+    wrong_answers_payload = []
+
+
+    for item in result[
+        "wrong_questions"
+    ]:
+
+        wrong_answers_payload.append(
+            {
+                "question_id": str(
+                    item.get(
+                        "question_id",
+                        "",
+                    )
+                ),
+
+                # 현재 05에서는 unit이 section_id
+                "section_id": str(
+                    item.get(
+                        "unit",
+                        "",
+                    )
+                ),
+
+                "topic": str(
+                    item.get(
+                        "topic",
+                        "",
+                    )
+                ),
+
+                "difficulty": str(
+                    item.get(
+                        "difficulty",
+                        "",
+                    )
+                ),
+
+                "user_answer": str(
+                    item.get(
+                        "user_answer",
+                        "",
+                    )
+                ),
+
+                "correct_answer": str(
+                    item.get(
+                        "correct_answer",
+                        "",
+                    )
+                ),
+            }
+        )
+
+
+    # -----------------------------------------------------
+    # 오답 저장
+    # -----------------------------------------------------
+
+    if (
+        exam_id
+        and wrong_answers_payload
+    ):
+
+        try:
+
+            save_wrong_answers(
+                user_id=CURRENT_USER_ID,
+                source_id=exam_id,
+                source_type="midterm",
+                answers=wrong_answers_payload,
+            )
+
+        except Exception:
+
+            # 시험 결과 저장 자체는 성공했으므로
+            # 오답 API 실패로 전체 시험을 실패 처리하지 않음.
+            pass
+
+
+    st.session_state[
+        "midterm_remote_saved"
+    ] = True
+
+    st.session_state[
+        "midterm_remote_exam_id"
+    ] = exam_id
+
+    st.session_state[
+        "midterm_remote_attempt_no"
+    ] = attempt_no
+
+
+    return midterm_response
+
+
 # =========================================================
 # Grading
 # =========================================================
@@ -791,14 +1479,17 @@ def grade_exam() -> dict[str, Any]:
 
     correct_count = 0
 
-    unit_stats: dict[str, dict[str, int]] = (
-        defaultdict(
-            lambda: {
-                "correct": 0,
-                "total": 0,
-            }
-        )
+
+    unit_stats: dict[
+        str,
+        dict[str, int],
+    ] = defaultdict(
+        lambda: {
+            "correct": 0,
+            "total": 0,
+        }
     )
+
 
     difficulty_stats: dict[
         str,
@@ -810,6 +1501,7 @@ def grade_exam() -> dict[str, Any]:
         }
     )
 
+
     topic_stats: dict[
         str,
         dict[str, int],
@@ -819,6 +1511,7 @@ def grade_exam() -> dict[str, Any]:
             "total": 0,
         }
     )
+
 
     question_results = []
 
@@ -844,8 +1537,10 @@ def grade_exam() -> dict[str, Any]:
             question
         )
 
-        difficulty = question_difficulty(
-            question
+        difficulty = (
+            question_difficulty(
+                question
+            )
         )
 
         topic = question_topic(
@@ -885,9 +1580,13 @@ def grade_exam() -> dict[str, Any]:
 
         result_item = {
             "question_id": qid,
+
             "unit": unit,
+
             "topic": topic,
+
             "difficulty": difficulty,
+
             "question": str(
                 getattr(
                     question,
@@ -895,17 +1594,23 @@ def grade_exam() -> dict[str, Any]:
                     "",
                 )
             ),
+
             "user_answer": (
                 ""
                 if user_answer is None
-                else str(user_answer)
+                else str(
+                    user_answer
+                )
             ),
+
             "correct_answer": (
                 correct_answer_text(
                     question
                 )
             ),
+
             "correct": correct,
+
             "explanation": str(
                 getattr(
                     question,
@@ -915,9 +1620,11 @@ def grade_exam() -> dict[str, Any]:
             ),
         }
 
+
         question_results.append(
             result_item
         )
+
 
         if not correct:
 
@@ -929,6 +1636,7 @@ def grade_exam() -> dict[str, Any]:
     total_count = len(
         questions
     )
+
 
     score = (
         round(
@@ -947,7 +1655,10 @@ def grade_exam() -> dict[str, Any]:
 
         serialized = {}
 
-        for name, values in stats.items():
+
+        for name, values in (
+            stats.items()
+        ):
 
             total = values[
                 "total"
@@ -957,11 +1668,14 @@ def grade_exam() -> dict[str, Any]:
                 "correct"
             ]
 
+
             serialized[
                 name
             ] = {
                 "correct": correct,
+
                 "total": total,
+
                 "score": (
                     round(
                         correct
@@ -973,30 +1687,66 @@ def grade_exam() -> dict[str, Any]:
                 ),
             }
 
+
         return serialized
 
 
     result = {
         "score": score,
-        "correct_count": correct_count,
-        "total_count": total_count,
+
+        "correct_count": (
+            correct_count
+        ),
+
+        "total_count": (
+            total_count
+        ),
+
         "wrong_count": (
             total_count
             - correct_count
         ),
+
         "unit_stats": serialize_stats(
             unit_stats
         ),
-        "difficulty_stats": serialize_stats(
-            difficulty_stats
+
+        "difficulty_stats": (
+            serialize_stats(
+                difficulty_stats
+            )
         ),
-        "topic_stats": serialize_stats(
-            topic_stats
+
+        "topic_stats": (
+            serialize_stats(
+                topic_stats
+            )
         ),
-        "question_results": question_results,
-        "wrong_questions": wrong_questions,
+
+        "question_results": (
+            question_results
+        ),
+
+        "wrong_questions": (
+            wrong_questions
+        ),
     }
 
+
+    # -----------------------------------------------------
+    # Google Sheets 저장
+    # -----------------------------------------------------
+
+    remote_result = (
+        save_exam_to_remote(
+            result
+        )
+    )
+
+
+    # -----------------------------------------------------
+    # Session State 결과 저장
+    # -----------------------------------------------------
 
     st.session_state[
         "midterm_exam_result"
@@ -1008,8 +1758,10 @@ def grade_exam() -> dict[str, Any]:
 
 
     save_exam_history(
-        result
+        result=result,
+        remote_result=remote_result,
     )
+
 
     return result
 
@@ -1020,15 +1772,83 @@ def grade_exam() -> dict[str, Any]:
 
 def save_exam_history(
     result: dict[str, Any],
+    remote_result: dict[str, Any] | None = None,
 ) -> None:
 
     history = st.session_state[
         "midterm_exam_history"
     ]
 
-    attempt = (
-        len(history) + 1
+
+    local_attempt = (
+        len(
+            history
+        )
+        + 1
     )
+
+
+    attempt = local_attempt
+
+    exam_id = ""
+
+
+    if isinstance(
+        remote_result,
+        dict,
+    ):
+
+        exam_id = str(
+            remote_result.get(
+                "exam_id",
+                "",
+            )
+        )
+
+
+        try:
+
+            remote_attempt = int(
+                remote_result.get(
+                    "attempt_no",
+                    0,
+                )
+                or 0
+            )
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            remote_attempt = 0
+
+
+        if remote_attempt > 0:
+
+            attempt = remote_attempt
+
+
+    # -----------------------------------------------------
+    # 중복 history 방지
+    # -----------------------------------------------------
+
+    if exam_id:
+
+        existing_exam_ids = {
+            str(
+                item.get(
+                    "exam_id",
+                    "",
+                )
+            )
+            for item in history
+        }
+
+
+        if exam_id in existing_exam_ids:
+            return
+
 
     config = st.session_state[
         "midterm_exam_config"
@@ -1036,43 +1856,63 @@ def save_exam_history(
 
 
     history_item = {
+        "exam_id": exam_id,
+
         "attempt": attempt,
+
         "score": result[
             "score"
         ],
+
         "correct_count": result[
             "correct_count"
         ],
+
         "total_count": result[
             "total_count"
         ],
+
         "wrong_count": result[
             "wrong_count"
         ],
+
         "units": config.get(
             "units",
             [],
         ).copy(),
+
         "difficulties": config.get(
             "difficulties",
             [],
         ).copy(),
+
         "unit_stats": result[
             "unit_stats"
         ],
+
         "difficulty_stats": result[
             "difficulty_stats"
         ],
+
         "topic_stats": result[
             "topic_stats"
         ],
+
         "wrong_questions": result[
             "wrong_questions"
         ],
     }
 
+
     history.append(
         history_item
+    )
+
+
+    history.sort(
+        key=lambda item: item[
+            "attempt"
+        ]
     )
 
 
@@ -1082,10 +1922,14 @@ def latest_exam_score() -> int | None:
         "midterm_exam_history"
     ]
 
+
     if not history:
         return None
 
-    return history[-1][
+
+    return history[
+        -1
+    ][
         "score"
     ]
 
@@ -1096,12 +1940,17 @@ def best_exam_score() -> int | None:
         "midterm_exam_history"
     ]
 
+
     if not history:
         return None
 
+
     return max(
-        item["score"]
-        for item in history
+        item[
+            "score"
+        ]
+        for item
+        in history
     )
 
 
@@ -1111,15 +1960,22 @@ def average_exam_score() -> float | None:
         "midterm_exam_history"
     ]
 
+
     if not history:
         return None
 
+
     return round(
         sum(
-            item["score"]
-            for item in history
+            item[
+                "score"
+            ]
+            for item
+            in history
         )
-        / len(history),
+        / len(
+            history
+        ),
         1,
     )
 
@@ -1130,12 +1986,25 @@ def exam_improvement() -> int | None:
         "midterm_exam_history"
     ]
 
-    if len(history) < 2:
+
+    if len(
+        history
+    ) < 2:
+
         return None
 
+
     return (
-        history[-1]["score"]
-        - history[0]["score"]
+        history[
+            -1
+        ][
+            "score"
+        ]
+        - history[
+            0
+        ][
+            "score"
+        ]
     )
 
 
@@ -1153,9 +2022,11 @@ def score_message(
             "🏆 매우 안정적입니다.",
             (
                 "핵심 개념을 잘 이해하고 있습니다. "
-                "이제 오답과 세부 용어를 중심으로 마무리하세요."
+                "이제 오답과 세부 용어를 중심으로 "
+                "마무리하세요."
             ),
         )
+
 
     if score >= 80:
 
@@ -1163,9 +2034,11 @@ def score_message(
             "✅ 좋은 수준입니다.",
             (
                 "기본 개념은 안정적입니다. "
-                "틀린 문제의 개념을 한 번 더 확인하세요."
+                "틀린 문제의 개념을 한 번 더 "
+                "확인하세요."
             ),
         )
+
 
     if score >= 70:
 
@@ -1177,33 +2050,39 @@ def score_message(
             ),
         )
 
+
     return (
         "⚠️ 추가 복습이 필요합니다.",
         (
-            "단원별 분석에서 70점 미만 영역을 먼저 복습하고 "
-            "다시 모의고사에 도전해보세요."
+            "단원별 분석에서 70점 미만 영역을 "
+            "먼저 복습하고 다시 모의고사에 "
+            "도전해보세요."
         ),
     )
 
 
 def weak_units(
-    unit_stats: dict[str, dict[str, int]],
+    unit_stats: dict[
+        str,
+        dict[str, int],
+    ],
 ) -> list[str]:
 
     result = []
 
-    for unit, stats in unit_stats.items():
 
-        if (
-            stats[
-                "score"
-            ]
-            < 70
-        ):
+    for unit, stats in (
+        unit_stats.items()
+    ):
+
+        if stats[
+            "score"
+        ] < 70:
 
             result.append(
                 unit
             )
+
 
     return result
 
@@ -1261,8 +2140,11 @@ st.sidebar.page_link(
 
 st.sidebar.divider()
 
+
 with st.sidebar:
+
     render_user_info()
+
 
 st.sidebar.caption(
     "현재 학습 영역"
@@ -1301,8 +2183,9 @@ render_html(
         </div>
 
         <div class="edu-hero-desc">
-            학습 1부터 학습 4까지의 핵심 개념을 무작위 문제로
-            점검하고 단원별 성취도와 오답을 분석합니다.
+            학습 1부터 학습 4까지의 핵심 개념을
+            무작위 문제로 점검하고 단원별 성취도와
+            오답을 분석합니다.
         </div>
 
     </div>
@@ -1336,39 +2219,37 @@ if not st.session_state[
         )
 
 
-        # -------------------------------------------------
-        # 범위
-        # -------------------------------------------------
-
         st.markdown(
             "### 1. 시험 범위"
         )
 
-        selected_units = st.multiselect(
-            "출제할 소단원을 선택하세요.",
-            options=list(
-                QUIZ_BANK.keys()
-            ),
-            default=list(
-                QUIZ_BANK.keys()
-            ),
-            format_func=lambda unit: (
-                f"{unit} · "
-                f"{UNIT_NAMES[unit]}"
-            ),
-            key="midterm_setup_units",
+
+        selected_units = (
+            st.multiselect(
+                "출제할 소단원을 선택하세요.",
+                options=list(
+                    QUIZ_BANK.keys()
+                ),
+                default=list(
+                    QUIZ_BANK.keys()
+                ),
+                format_func=lambda unit: (
+                    f"{unit} · "
+                    f"{UNIT_NAMES[unit]}"
+                ),
+                key="midterm_setup_units",
+            )
         )
 
-
-        # -------------------------------------------------
-        # 선택 범위 시각화
-        # -------------------------------------------------
 
         if selected_units:
 
             render_pills(
                 [
-                    f"{unit} {UNIT_NAMES[unit]}"
+                    (
+                        f"{unit} "
+                        f"{UNIT_NAMES[unit]}"
+                    )
                     for unit
                     in selected_units
                 ]
@@ -1378,6 +2259,7 @@ if not st.session_state[
         st.markdown(
             "### 2. 난이도"
         )
+
 
         selected_difficulties = (
             st.multiselect(
@@ -1393,6 +2275,7 @@ if not st.session_state[
             "### 3. 문제 수"
         )
 
+
         question_count = st.radio(
             "응시할 문제 수",
             [
@@ -1405,10 +2288,6 @@ if not st.session_state[
         )
 
 
-        # -------------------------------------------------
-        # 출제 가능 문제
-        # -------------------------------------------------
-
         available_pool = (
             filtered_question_pool(
                 selected_units,
@@ -1416,9 +2295,13 @@ if not st.session_state[
             )
         )
 
-        col1, col2, col3 = st.columns(
-            3
+
+        col1, col2, col3 = (
+            st.columns(
+                3
+            )
         )
+
 
         with col1:
 
@@ -1427,20 +2310,29 @@ if not st.session_state[
                 f"{len(selected_units)}개",
             )
 
+
         with col2:
 
             st.metric(
                 "출제 가능 문제",
-                f"{len(available_pool)}문제",
+                (
+                    f"{len(available_pool)}"
+                    "문제"
+                ),
             )
+
 
         with col3:
 
             st.metric(
                 "응시 예정",
                 (
-                    f"{min(question_count, len(available_pool))}"
-                    "문제"
+                    f"{min(
+                        question_count,
+                        len(
+                            available_pool
+                        ),
+                    )}문제"
                 ),
             )
 
@@ -1451,14 +2343,18 @@ if not st.session_state[
             and available_pool
         ):
 
-            if len(
-                available_pool
-            ) < question_count:
+            if (
+                len(
+                    available_pool
+                )
+                < question_count
+            ):
 
                 st.warning(
                     (
                         f"현재 조건에서는 "
-                        f"{len(available_pool)}문제만 출제할 수 있습니다. "
+                        f"{len(available_pool)}문제만 "
+                        "출제할 수 있습니다. "
                         "가능한 문제 전체가 출제됩니다."
                     )
                 )
@@ -1482,7 +2378,8 @@ if not st.session_state[
         else:
 
             st.warning(
-                "시험 범위와 난이도를 하나 이상 선택하세요."
+                "시험 범위와 난이도를 "
+                "하나 이상 선택하세요."
             )
 
 
@@ -1494,6 +2391,7 @@ if not st.session_state[
         "midterm_exam_history"
     ]
 
+
     if history:
 
         with st.container(
@@ -1503,24 +2401,39 @@ if not st.session_state[
             render_surface_header(
                 "나의 모의고사 기록",
                 (
-                    "지금까지 응시한 모의고사의 점수 변화와 "
-                    "학습 성장을 확인합니다."
+                    "지금까지 응시한 모의고사의 "
+                    "점수 변화와 학습 성장을 확인합니다."
                 ),
                 label="EXAM HISTORY",
             )
 
 
-            latest = latest_exam_score()
-            best = best_exam_score()
-            average = average_exam_score()
-            improvement = exam_improvement()
-
-
-            metric1, metric2, metric3, metric4 = (
-                st.columns(
-                    4
-                )
+            latest = (
+                latest_exam_score()
             )
+
+            best = (
+                best_exam_score()
+            )
+
+            average = (
+                average_exam_score()
+            )
+
+            improvement = (
+                exam_improvement()
+            )
+
+
+            (
+                metric1,
+                metric2,
+                metric3,
+                metric4,
+            ) = st.columns(
+                4
+            )
+
 
             with metric1:
 
@@ -1529,6 +2442,7 @@ if not st.session_state[
                     f"{len(history)}회",
                 )
 
+
             with metric2:
 
                 st.metric(
@@ -1536,12 +2450,14 @@ if not st.session_state[
                     f"{latest}점",
                 )
 
+
             with metric3:
 
                 st.metric(
                     "최고 점수",
                     f"{best}점",
                 )
+
 
             with metric4:
 
@@ -1564,30 +2480,38 @@ if not st.session_state[
                 "### 📈 점수 변화"
             )
 
-            history_df = pd.DataFrame(
-                {
-                    "응시 회차": [
-                        item["attempt"]
-                        for item in history
-                    ],
-                    "점수": [
-                        item["score"]
-                        for item in history
-                    ],
-                }
-            ).set_index(
-                "응시 회차"
+
+            history_df = (
+                pd.DataFrame(
+                    {
+                        "응시 회차": [
+                            item[
+                                "attempt"
+                            ]
+                            for item
+                            in history
+                        ],
+
+                        "점수": [
+                            item[
+                                "score"
+                            ]
+                            for item
+                            in history
+                        ],
+                    }
+                )
+                .set_index(
+                    "응시 회차"
+                )
             )
+
 
             st.line_chart(
                 history_df,
                 height=290,
             )
 
-
-            # ---------------------------------------------
-            # 기록 목록
-            # ---------------------------------------------
 
             with st.expander(
                 "📋 전체 응시 기록 보기"
@@ -1606,14 +2530,38 @@ if not st.session_state[
                         )
                     )
 
-                    st.caption(
-                        "범위: "
-                        + ", ".join(
-                            item[
-                                "units"
-                            ]
-                        )
+
+                    units = item.get(
+                        "units",
+                        [],
                     )
+
+
+                    if units:
+
+                        st.caption(
+                            "범위: "
+                            + ", ".join(
+                                units
+                            )
+                        )
+
+
+                    submitted_at = str(
+                        item.get(
+                            "submitted_at",
+                            "",
+                        )
+                    ).strip()
+
+
+                    if submitted_at:
+
+                        st.caption(
+                            f"응시 시각: "
+                            f"{submitted_at}"
+                        )
+
 
                     st.divider()
 
@@ -1644,10 +2592,6 @@ elif (
     ]
 
 
-    # =====================================================
-    # Exam Header
-    # =====================================================
-
     with st.container(
         key="edu_section_midterm_exam_header"
     ):
@@ -1661,23 +2605,24 @@ elif (
             label="EXAM IN PROGRESS",
         )
 
+
         render_pills(
             [
-                f"{unit} {UNIT_NAMES[unit]}"
+                (
+                    f"{unit} "
+                    f"{UNIT_NAMES[unit]}"
+                )
                 for unit
                 in config.get(
                     "units",
-                    []
+                    [],
                 )
             ]
         )
 
 
-    # =====================================================
-    # 답변 진행률
-    # =====================================================
-
     answered_count = 0
+
 
     for question in questions:
 
@@ -1688,6 +2633,7 @@ elif (
         value = answers.get(
             qid
         )
+
 
         if (
             value is not None
@@ -1701,7 +2647,9 @@ elif (
 
     progress = (
         answered_count
-        / len(questions)
+        / len(
+            questions
+        )
         * 100
         if questions
         else 0
@@ -1712,17 +2660,14 @@ elif (
         progress,
         label=(
             f"답변 진행률 · "
-            f"{answered_count}/{len(questions)}"
+            f"{answered_count}/"
+            f"{len(questions)}"
         ),
     )
 
 
     st.divider()
 
-
-    # =====================================================
-    # 문제
-    # =====================================================
 
     for index, question in enumerate(
         questions,
@@ -1735,10 +2680,10 @@ elif (
         )
 
 
-    # 문제 렌더링 후 다시 계산
     answered_count = sum(
         1
-        for question in questions
+        for question
+        in questions
         if (
             st.session_state[
                 "midterm_exam_answers"
@@ -1764,12 +2709,10 @@ elif (
     st.divider()
 
 
-    # =====================================================
-    # 제출
-    # =====================================================
-
-    submit_col, cancel_col = st.columns(
-        [4, 1]
+    submit_col, cancel_col = (
+        st.columns(
+            [4, 1]
+        )
     )
 
 
@@ -1781,8 +2724,9 @@ elif (
 
             st.warning(
                 (
-                    f"아직 {len(questions) - answered_count}문제에 "
-                    "답하지 않았습니다."
+                    f"아직 "
+                    f"{len(questions) - answered_count}"
+                    "문제에 답하지 않았습니다."
                 )
             )
 
@@ -1793,7 +2737,9 @@ elif (
             width="stretch",
             disabled=(
                 answered_count
-                < len(questions)
+                < len(
+                    questions
+                )
             ),
         ):
 
@@ -1825,10 +2771,6 @@ else:
     ]
 
 
-    # =====================================================
-    # 결과 상단
-    # =====================================================
-
     with st.container(
         key="edu_section_midterm_result"
     ):
@@ -1843,9 +2785,12 @@ else:
         )
 
 
-        metric1, metric2, metric3 = st.columns(
-            3
+        metric1, metric2, metric3 = (
+            st.columns(
+                3
+            )
         )
+
 
         with metric1:
 
@@ -1853,6 +2798,7 @@ else:
                 "점수",
                 f"{result['score']}점",
             )
+
 
         with metric2:
 
@@ -1864,6 +2810,7 @@ else:
                 ),
             )
 
+
         with metric3:
 
             st.metric(
@@ -1872,14 +2819,18 @@ else:
             )
 
 
-        title, message = score_message(
-            result[
-                "score"
-            ]
+        title, message = (
+            score_message(
+                result[
+                    "score"
+                ]
+            )
         )
 
+
         st.info(
-            f"**{title}**  \n{message}"
+            f"**{title}**  \n"
+            f"{message}"
         )
 
 
@@ -1894,8 +2845,8 @@ else:
         render_surface_header(
             "단원별 성취도",
             (
-                "어느 소단원에서 강점과 약점이 나타났는지 "
-                "확인합니다."
+                "어느 소단원에서 강점과 약점이 "
+                "나타났는지 확인합니다."
             ),
             label="UNIT ANALYSIS",
         )
@@ -1904,6 +2855,7 @@ else:
         unit_stats = result[
             "unit_stats"
         ]
+
 
         for unit in sorted(
             unit_stats.keys()
@@ -1918,15 +2870,25 @@ else:
                 unit,
             )
 
-            col1, col2, col3 = st.columns(
-                [5, 1.5, 1.5]
+
+            col1, col2, col3 = (
+                st.columns(
+                    [
+                        5,
+                        1.5,
+                        1.5,
+                    ]
+                )
             )
+
 
             with col1:
 
                 st.markdown(
-                    f"**{unit} · {unit_name}**"
+                    f"**{unit} · "
+                    f"{unit_name}**"
                 )
+
 
                 st.progress(
                     stats[
@@ -1934,6 +2896,7 @@ else:
                     ]
                     / 100
                 )
+
 
             with col2:
 
@@ -1944,6 +2907,7 @@ else:
                         f"/{stats['total']}"
                     ),
                 )
+
 
             with col3:
 
@@ -1963,6 +2927,7 @@ else:
         ]
     )
 
+
     with st.container(
         key="edu_section_midterm_weakness"
     ):
@@ -1970,8 +2935,8 @@ else:
         render_surface_header(
             "복습이 필요한 영역",
             (
-                "70% 미만의 소단원을 우선적으로 복습하는 것을 "
-                "권장합니다."
+                "70% 미만의 소단원을 우선적으로 "
+                "복습하는 것을 권장합니다."
             ),
             label="REVIEW PRIORITY",
         )
@@ -1985,6 +2950,7 @@ else:
                     "unit_stats"
                 ][unit]["score"]
 
+
                 st.warning(
                     (
                         f"📘 **{unit} · "
@@ -1993,10 +2959,12 @@ else:
                     )
                 )
 
+
         else:
 
             st.success(
-                "🎉 모든 출제 단원에서 70% 이상을 달성했습니다."
+                "🎉 모든 출제 단원에서 "
+                "70% 이상을 달성했습니다."
             )
 
 
@@ -2011,8 +2979,8 @@ else:
         render_surface_header(
             "난이도별 분석",
             (
-                "쉬움 · 보통 · 어려움 문제의 정답률을 "
-                "비교합니다."
+                "쉬움 · 보통 · 어려움 문제의 "
+                "정답률을 비교합니다."
             ),
             label="DIFFICULTY ANALYSIS",
         )
@@ -2041,6 +3009,7 @@ else:
             stats = difficulty_stats[
                 difficulty
             ]
+
 
             with col:
 
@@ -2086,6 +3055,7 @@ else:
                 "🏆 모든 문제를 맞혔습니다!"
             )
 
+
         else:
 
             for index, item in enumerate(
@@ -2116,6 +3086,7 @@ else:
                         f"{item['correct_answer']}"
                     )
 
+
                     if item[
                         "explanation"
                     ]:
@@ -2135,6 +3106,7 @@ else:
         "midterm_exam_history"
     ]
 
+
     if history:
 
         with st.container(
@@ -2144,16 +3116,22 @@ else:
             render_surface_header(
                 "모의고사 성장 기록",
                 (
-                    "이번 응시 결과가 누적 기록에 저장되었습니다."
+                    "이번 응시 결과가 누적 기록에 "
+                    "저장되었습니다."
                 ),
                 label="GROWTH",
             )
 
-            metric1, metric2, metric3, metric4 = (
-                st.columns(
-                    4
-                )
+
+            (
+                metric1,
+                metric2,
+                metric3,
+                metric4,
+            ) = st.columns(
+                4
             )
+
 
             with metric1:
 
@@ -2162,12 +3140,14 @@ else:
                     f"{len(history)}회",
                 )
 
+
             with metric2:
 
                 st.metric(
                     "최근 점수",
                     f"{latest_exam_score()}점",
                 )
+
 
             with metric3:
 
@@ -2176,9 +3156,13 @@ else:
                     f"{best_exam_score()}점",
                 )
 
+
             with metric4:
 
-                improvement = exam_improvement()
+                improvement = (
+                    exam_improvement()
+                )
+
 
                 if improvement is None:
 
@@ -2186,6 +3170,7 @@ else:
                         "첫 시험 대비",
                         "-",
                     )
+
 
                 else:
 
@@ -2195,22 +3180,35 @@ else:
                     )
 
 
-            if len(history) >= 2:
+            if len(
+                history
+            ) >= 2:
 
-                history_df = pd.DataFrame(
-                    {
-                        "응시 회차": [
-                            item["attempt"]
-                            for item in history
-                        ],
-                        "점수": [
-                            item["score"]
-                            for item in history
-                        ],
-                    }
-                ).set_index(
-                    "응시 회차"
+                history_df = (
+                    pd.DataFrame(
+                        {
+                            "응시 회차": [
+                                item[
+                                    "attempt"
+                                ]
+                                for item
+                                in history
+                            ],
+
+                            "점수": [
+                                item[
+                                    "score"
+                                ]
+                                for item
+                                in history
+                            ],
+                        }
+                    )
+                    .set_index(
+                        "응시 회차"
+                    )
                 )
+
 
                 st.line_chart(
                     history_df,
@@ -2224,8 +3222,15 @@ else:
 
     st.divider()
 
-    col1, col2, col3 = st.columns(
-        [2, 2, 1]
+
+    col1, col2, col3 = (
+        st.columns(
+            [
+                2,
+                2,
+                1,
+            ]
+        )
     )
 
 
@@ -2241,6 +3246,7 @@ else:
                 "midterm_exam_config"
             ]
 
+
             start_exam(
                 config.get(
                     "units",
@@ -2248,15 +3254,18 @@ else:
                         QUIZ_BANK.keys()
                     ),
                 ),
+
                 config.get(
                     "difficulties",
                     DIFFICULTY_ORDER,
                 ),
+
                 config.get(
                     "question_count",
                     20,
                 ),
             )
+
 
             st.rerun()
 
