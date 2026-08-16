@@ -489,3 +489,47 @@ def save_wrong_answers(
         },
         timeout=20,
     )
+
+# =========================================================
+# 누적 오답 불러오기
+# =========================================================
+
+def load_wrong_answers(
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """
+    학생의 누적 오답 기록을
+    wrong_answers 시트에서 불러옵니다.
+    """
+
+    result = post_to_sheets(
+        action="get_wrong_answers",
+        payload={
+            "user_id": user_id,
+        },
+    )
+
+    if not result.get(
+        "success"
+    ):
+        return []
+
+    results = result.get(
+        "results",
+        [],
+    )
+
+    if not isinstance(
+        results,
+        list,
+    ):
+        return []
+
+    return [
+        item
+        for item in results
+        if isinstance(
+            item,
+            dict,
+        )
+    ]
