@@ -20,6 +20,9 @@
     --text-muted: #7b8798;
     --text-light: #98a2b3;
 
+    /* 버튼 텍스트는 무조건 완전 검정 */
+    --button-text: #000000;
+
     --primary: #5b5cf0;
     --primary-dark: #494bd8;
     --primary-soft: #eef0ff;
@@ -37,6 +40,8 @@
     --border: #e2e7ef;
     --border-soft: #edf0f5;
     --border-strong: #d4dae5;
+
+    --progress-track: #eef1f6;
 
     --radius-sm: 9px;
     --radius-md: 13px;
@@ -281,11 +286,12 @@ div[data-testid="stProgress"] {
 
 
 /* 미진행 영역 */
+
 div[data-testid="stProgress"] > div {
     overflow: hidden;
 
     background:
-        #eef1f6 !important;
+        var(--progress-track) !important;
 
     border-radius:
         999px;
@@ -293,6 +299,7 @@ div[data-testid="stProgress"] > div {
 
 
 /* 진행 영역 */
+
 div[data-testid="stProgress"] > div > div {
     background:
         linear-gradient(
@@ -304,6 +311,7 @@ div[data-testid="stProgress"] > div > div {
     border-radius:
         999px;
 }
+
 
 /* =========================================================
    08. GENERIC BORDER CONTAINER
@@ -825,6 +833,20 @@ div[data-testid="stAlert"] {
 }
 
 
+/* Alert 안의 본문은 너무 흐리지 않도록 */
+
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] li {
+    color:
+        var(--text-secondary) !important;
+}
+
+div[data-testid="stAlert"] strong {
+    color:
+        var(--text-primary) !important;
+}
+
+
 /* =========================================================
    19. EXPANDER
    ========================================================= */
@@ -871,19 +893,27 @@ details summary {
         var(--radius-md);
 }
 
+
 /* =========================================================
    21. BUTTONS
+   모든 버튼 글씨는 완전 검정
    ========================================================= */
 
-button[kind="primary"] {
+
+/* ---------------------------------------------------------
+   모든 일반 버튼 공통
+   --------------------------------------------------------- */
+
+.stButton > button,
+.stFormSubmitButton > button,
+.stDownloadButton > button,
+[data-testid="stBaseButton-primary"],
+[data-testid="stBaseButton-secondary"] {
     color:
-        #000000 !important;
+        var(--button-text) !important;
 
-    background:
-        var(--primary) !important;
-
-    border:
-        none !important;
+    -webkit-text-fill-color:
+        var(--button-text) !important;
 
     border-radius:
         10px !important;
@@ -891,89 +921,128 @@ button[kind="primary"] {
     font-weight:
         700 !important;
 
-    box-shadow:
-        0 5px 14px
-        rgba(91, 92, 240, 0.16);
+    opacity:
+        1 !important;
 }
 
 
-/* Streamlit 내부 텍스트까지 검정색으로 강제 */
-button[kind="primary"] p,
-button[kind="primary"] span,
-button[kind="primary"] div {
+/* ---------------------------------------------------------
+   버튼 내부 Streamlit 요소도 전부 검정
+   --------------------------------------------------------- */
+
+.stButton > button *,
+.stFormSubmitButton > button *,
+.stDownloadButton > button *,
+[data-testid="stBaseButton-primary"] *,
+[data-testid="stBaseButton-secondary"] * {
     color:
-        #000000 !important;
+        var(--button-text) !important;
+
+    -webkit-text-fill-color:
+        var(--button-text) !important;
+
+    opacity:
+        1 !important;
 }
 
 
-button[kind="primary"]:hover {
+/* ---------------------------------------------------------
+   PRIMARY
+   --------------------------------------------------------- */
+
+button[kind="primary"],
+[data-testid="stBaseButton-primary"] {
     color:
-        #000000 !important;
+        var(--button-text) !important;
 
-    background:
-        var(--primary-dark) !important;
-}
-
-
-/* Hover 상태 내부 텍스트도 검정색 유지 */
-button[kind="primary"]:hover p,
-button[kind="primary"]:hover span,
-button[kind="primary"]:hover div {
-    color:
-        #000000 !important;
-}
-
-
-button[kind="secondary"] {
-    color:
-        var(--text-primary) !important;
-
-    background:
-        #ffffff !important;
-
-    border:
-        1px solid
-        var(--border-strong) !important;
-
-    border-radius:
-        10px !important;
-}
-
-
-/* Secondary 내부 텍스트도 진하게 유지 */
-button[kind="secondary"] p,
-button[kind="secondary"] span,
-button[kind="secondary"] div {
-    color:
-        var(--text-primary) !important;
-}
-
-button[kind="primary"] {
     background:
         var(--primary) !important;
 
     border:
         none !important;
 
-    border-radius:
-        10px !important;
-
-    font-weight:
-        650 !important;
-
     box-shadow:
         0 5px 14px
         rgba(91, 92, 240, 0.16);
 }
 
-button[kind="primary"]:hover {
+
+/* Primary 내부 글씨 */
+
+button[kind="primary"] *,
+button[kind="primary"] p,
+button[kind="primary"] span,
+button[kind="primary"] div {
+    color:
+        var(--button-text) !important;
+
+    -webkit-text-fill-color:
+        var(--button-text) !important;
+}
+
+
+/* Primary Hover */
+
+button[kind="primary"]:hover,
+[data-testid="stBaseButton-primary"]:hover {
+    color:
+        var(--button-text) !important;
+
     background:
         var(--primary-dark) !important;
 }
 
-button[kind="secondary"] {
+
+/* Primary Hover 내부 글씨 */
+
+button[kind="primary"]:hover *,
+[data-testid="stBaseButton-primary"]:hover * {
     color:
-        var(--text-primary) !important;
+        var(--button-text) !important;
+
+    -webkit-text-fill-color:
+        var(--button-text) !important;
+}
+
+
+/* Primary Focus */
+
+button[kind="primary"]:focus,
+button[kind="primary"]:focus-visible,
+[data-testid="stBaseButton-primary"]:focus,
+[data-testid="stBaseButton-primary"]:focus-visible {
+    color:
+        var(--button-text) !important;
+
+    outline:
+        none !important;
+
+    box-shadow:
+        0 0 0 3px
+        rgba(91, 92, 240, 0.18) !important;
+}
+
+
+/* Primary Active */
+
+button[kind="primary"]:active,
+[data-testid="stBaseButton-primary"]:active {
+    color:
+        var(--button-text) !important;
+
+    background:
+        #4143c9 !important;
+}
+
+
+/* ---------------------------------------------------------
+   SECONDARY
+   --------------------------------------------------------- */
+
+button[kind="secondary"],
+[data-testid="stBaseButton-secondary"] {
+    color:
+        var(--button-text) !important;
 
     background:
         #ffffff !important;
@@ -982,8 +1051,108 @@ button[kind="secondary"] {
         1px solid
         var(--border-strong) !important;
 
-    border-radius:
-        10px !important;
+    box-shadow:
+        none !important;
+}
+
+
+/* Secondary 내부 글씨 */
+
+button[kind="secondary"] *,
+button[kind="secondary"] p,
+button[kind="secondary"] span,
+button[kind="secondary"] div {
+    color:
+        var(--button-text) !important;
+
+    -webkit-text-fill-color:
+        var(--button-text) !important;
+}
+
+
+/* Secondary Hover */
+
+button[kind="secondary"]:hover,
+[data-testid="stBaseButton-secondary"]:hover {
+    color:
+        var(--button-text) !important;
+
+    background:
+        #f4f5f8 !important;
+
+    border-color:
+        #b8c0cd !important;
+}
+
+
+/* ---------------------------------------------------------
+   FORM BUTTON
+   --------------------------------------------------------- */
+
+.stFormSubmitButton > button {
+    color:
+        var(--button-text) !important;
+}
+
+.stFormSubmitButton > button * {
+    color:
+        var(--button-text) !important;
+
+    -webkit-text-fill-color:
+        var(--button-text) !important;
+}
+
+
+/* ---------------------------------------------------------
+   DOWNLOAD BUTTON
+   --------------------------------------------------------- */
+
+.stDownloadButton > button {
+    color:
+        var(--button-text) !important;
+}
+
+.stDownloadButton > button * {
+    color:
+        var(--button-text) !important;
+
+    -webkit-text-fill-color:
+        var(--button-text) !important;
+}
+
+
+/* ---------------------------------------------------------
+   DISABLED
+   비활성 상태라도 텍스트는 검정 유지
+   --------------------------------------------------------- */
+
+.stButton > button:disabled,
+.stFormSubmitButton > button:disabled,
+.stDownloadButton > button:disabled,
+button[kind="primary"]:disabled,
+button[kind="secondary"]:disabled,
+[data-testid="stBaseButton-primary"]:disabled,
+[data-testid="stBaseButton-secondary"]:disabled {
+    color:
+        #000000 !important;
+
+    -webkit-text-fill-color:
+        #000000 !important;
+
+    opacity:
+        0.62 !important;
+}
+
+.stButton > button:disabled *,
+.stFormSubmitButton > button:disabled *,
+.stDownloadButton > button:disabled *,
+button[kind="primary"]:disabled *,
+button[kind="secondary"]:disabled * {
+    color:
+        #000000 !important;
+
+    -webkit-text-fill-color:
+        #000000 !important;
 }
 
 
@@ -993,21 +1162,193 @@ button[kind="secondary"] {
 
 input,
 textarea {
+    color:
+        var(--text-primary) !important;
+
+    background:
+        #ffffff !important;
+
     border-radius:
         10px !important;
 }
 
-div[data-baseweb="select"] > div {
-    border-color:
-        var(--border-strong) !important;
 
-    border-radius:
-        10px !important;
+/* Placeholder */
+
+input::placeholder,
+textarea::placeholder {
+    color:
+        #98a2b3 !important;
+
+    opacity:
+        1;
+}
+
+
+/* Disabled input */
+
+input:disabled,
+textarea:disabled {
+    color:
+        #4c5a6d !important;
+
+    -webkit-text-fill-color:
+        #4c5a6d !important;
+
+    opacity:
+        1 !important;
+
+    background:
+        #f8f9fc !important;
 }
 
 
 /* =========================================================
-   23. DIVIDER
+   23. SELECTBOX / DROPDOWN
+   ========================================================= */
+
+
+/* Selectbox 입력 영역 */
+
+div[data-baseweb="select"] > div {
+    min-height:
+        46px;
+
+    color:
+        var(--text-primary) !important;
+
+    background:
+        #ffffff !important;
+
+    border:
+        1.5px solid
+        #c8cfdb !important;
+
+    border-radius:
+        10px !important;
+
+    box-shadow:
+        0 1px 2px
+        rgba(15, 23, 42, 0.04) !important;
+}
+
+
+/* Hover */
+
+div[data-baseweb="select"] > div:hover {
+    border-color:
+        #8d96a8 !important;
+}
+
+
+/* Focus */
+
+div[data-baseweb="select"] > div:focus-within {
+    border-color:
+        var(--primary) !important;
+
+    box-shadow:
+        0 0 0 3px
+        rgba(91, 92, 240, 0.10) !important;
+}
+
+
+/* 선택된 텍스트 */
+
+div[data-baseweb="select"] span {
+    color:
+        var(--text-primary) !important;
+
+    font-weight:
+        600;
+}
+
+
+/* 우측 화살표 */
+
+div[data-baseweb="select"] svg {
+    color:
+        #475569 !important;
+}
+
+
+/* Dropdown 팝업 */
+
+ul[role="listbox"] {
+    background:
+        #ffffff !important;
+
+    border:
+        1px solid
+        var(--border) !important;
+
+    border-radius:
+        10px !important;
+
+    box-shadow:
+        0 8px 24px
+        rgba(15, 23, 42, 0.10) !important;
+}
+
+
+/* Dropdown 항목 */
+
+li[role="option"] {
+    color:
+        var(--text-primary) !important;
+
+    background:
+        #ffffff;
+}
+
+
+/* Dropdown Hover */
+
+li[role="option"]:hover {
+    color:
+        #000000 !important;
+
+    background:
+        #f0f2f8 !important;
+}
+
+
+/* Dropdown 선택 항목 */
+
+li[role="option"][aria-selected="true"] {
+    color:
+        #000000 !important;
+
+    background:
+        #e9edf5 !important;
+
+    font-weight:
+        700;
+}
+
+
+/* =========================================================
+   24. RADIO / CHECKBOX
+   ========================================================= */
+
+[data-testid="stRadio"] label,
+[data-testid="stCheckbox"] label {
+    color:
+        var(--text-primary) !important;
+}
+
+
+/* 체크박스 / 라디오 설명 */
+
+[data-testid="stRadio"] p,
+[data-testid="stCheckbox"] p {
+    color:
+        var(--text-primary) !important;
+}
+
+
+/* =========================================================
+   25. DIVIDER
    ========================================================= */
 
 hr {
@@ -1020,7 +1361,7 @@ hr {
 
 
 /* =========================================================
-   24. METRIC
+   26. METRIC
    ========================================================= */
 
 [data-testid="stMetric"] {
@@ -1042,8 +1383,57 @@ hr {
 }
 
 
+/* Metric label */
+
+[data-testid="stMetricLabel"] {
+    color:
+        var(--text-secondary) !important;
+}
+
+
+/* Metric value */
+
+[data-testid="stMetricValue"] {
+    color:
+        var(--text-secondary) !important;
+}
+
+
 /* =========================================================
-   25. MOBILE
+   27. PAGE LINK / LINK BUTTON
+   ========================================================= */
+
+[data-testid="stPageLink"] a {
+    border-radius:
+        10px !important;
+}
+
+[data-testid="stPageLink"] a p,
+[data-testid="stPageLink"] a span {
+    color:
+        var(--text-primary) !important;
+}
+
+
+/* =========================================================
+   28. FORM
+   ========================================================= */
+
+[data-testid="stForm"] {
+    border:
+        1px solid
+        var(--border-strong) !important;
+
+    border-radius:
+        var(--radius-md) !important;
+
+    background:
+        transparent;
+}
+
+
+/* =========================================================
+   29. MOBILE
    ========================================================= */
 
 @media (max-width: 768px) {
@@ -1098,62 +1488,10 @@ hr {
             0.78rem
             0.85rem;
     }
-}
 
-/* =========================================================
-   SELECTBOX / DROPDOWN
-   ========================================================= */
-
-/* Selectbox 전체 입력 영역 */
-div[data-baseweb="select"] > div {
-    background:
-        #ffffff !important;
-
-    border:
-        1.5px solid #c8cfdb !important;
-
-    border-radius:
-        10px !important;
-
-    box-shadow:
-        0 1px 2px
-        rgba(15, 23, 42, 0.04) !important;
-
-    min-height:
-        46px;
-}
-
-
-/* 마우스를 올렸을 때 */
-div[data-baseweb="select"] > div:hover {
-    border-color:
-        #8d96a8 !important;
-}
-
-
-/* 선택창이 활성화됐을 때 */
-div[data-baseweb="select"] > div:focus-within {
-    border-color:
-        var(--primary) !important;
-
-    box-shadow:
-        0 0 0 3px
-        rgba(91, 92, 240, 0.10) !important;
-}
-
-
-/* 선택된 텍스트 */
-div[data-baseweb="select"] span {
-    color:
-        var(--text-primary) !important;
-
-    font-weight:
-        600;
-}
-
-
-/* 우측 화살표 */
-div[data-baseweb="select"] svg {
-    color:
-        #475569 !important;
+    .stButton > button,
+    .stFormSubmitButton > button {
+        min-height:
+            44px;
+    }
 }
